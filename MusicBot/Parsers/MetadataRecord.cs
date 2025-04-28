@@ -61,4 +61,3 @@ public record Version(
     [property: JsonProperty("release_git_head")] string ReleaseGitHead,
     [property: JsonProperty("repository")] string Repository
 );
-

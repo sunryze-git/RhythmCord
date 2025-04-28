@@ -4,11 +4,13 @@ using MusicBot.Services;
 using NetCord;
 using NetCord.Gateway;
 using NetCord.Services.ApplicationCommands;
+using Newtonsoft.Json;
 
 namespace MusicBot;
 
 public static class MusicBot
 {
+    private const string ConfigPath = "config.json";
     private static ILogger? _logger;
     public static IServiceProvider? Services;
     
@@ -33,16 +35,22 @@ public static class MusicBot
         _logger = loggerFactory.CreateLogger("MusicBot");
         _logger.LogInformation("Logger configured.");
         
-        // Get Environment Token
-        var token = Environment.GetEnvironmentVariable("DISCORD_TOKEN");
-        if (string.IsNullOrEmpty(token))
+        
+        if (!File.Exists(ConfigPath))
         {
-            _logger.LogCritical("No Discord token was found. Set the DISCORD_TOKEN environment variable.");
+            _logger.LogCritical("No configuration found. Create a config.json and input a token.");
+            return;
+        }
+        
+        var config = JsonConvert.DeserializeObject<Parsers.Config>(File.ReadAllText(ConfigPath));
+        if (config is null || string.IsNullOrEmpty(config.Token))
+        {
+            _logger.LogCritical("The configuration file was invalid or did not contain a token.");
             return;
         }
 
         // Startup the Client
-        var client = new GatewayClient(new BotToken(token));
+        var client = new GatewayClient(new BotToken(config.Token));
         
         // Initialize the Service Collection, and load the client and application command service
         Services = new ServiceCollection()
