@@ -165,86 +165,89 @@ public class GuildMusicService(
 
     private async Task PlaybackRunner(ApplicationCommandContext context, VoiceClient audioClient)
     {
-        LogInfo("Playback runner has started.");
-        await audioClient.StartAsync();
-        await audioClient.EnterSpeakingStateAsync(SpeakingFlags.Microphone);
-        await using var outStream = audioClient.CreateOutputStream();
-        await using OpusEncodeStream opusEncodeStream =
-            new(outStream, PcmFormat.Short, VoiceChannels.Stereo, OpusApplication.Audio);
-        
-        _stopRunnerCts = new CancellationTokenSource();
-        // This is the main playback loop.
-        // The only time this should ever exit is upon inactivity, an error, or upon request.
-        while (!_stopRunnerCts.IsCancellationRequested)
+        try
         {
-            // Reset the inactivity token upon new iteration.
-            _inactivityCts?.Dispose();
-            _inactivityCts = new CancellationTokenSource();
-            try
+            LogInfo("Playback runner has started.");
+            await audioClient.StartAsync();
+            await audioClient.EnterSpeakingStateAsync(SpeakingFlags.Microphone);
+            await using var outStream = audioClient.CreateOutputStream();
+            await using OpusEncodeStream opusEncodeStream =
+                new(outStream, PcmFormat.Short, VoiceChannels.Stereo, OpusApplication.Audio);
+            
+            _stopRunnerCts = new CancellationTokenSource();
+            // This is the main playback loop.
+            // The only time this should ever exit is upon inactivity, an error, or upon request.
+            while (!_stopRunnerCts.IsCancellationRequested)
             {
-                // Queue loop
-                while (SongQueue.Count > 0)
-                {
-                    await PlayNextSong(opusEncodeStream);
-
-                    // Check between songs if we need to stop.
-                    if (_stopRunnerCts.IsCancellationRequested)
-                    {
-                        break;
-                    }
-                }
-
-                LogInfo("Reached the end of the queue.");
-                await context.Channel.SendMessageAsync("Reached the end of the queue.");
-
-                // Queue Loop is now empty. Sit here for 10 minutes.
-                // If a new song is added this task will throw a TaskCanceledException.
-                // That will be caught in the catch block and we will continue.
-                await Task.Delay(TimeSpan.FromMinutes(10), _inactivityCts.Token);
-
-                // If we are here, inactivity timeout was reached.
-                // Call the stop runner token, which will cause the playback task to exit.
-                LogInfo("Inactivity timeout reached. Stopping playback runner.");
-                break;
-            }
-            catch (TaskCanceledException)
-            {
-                // Inactivity token was cancelled, but we probably got a new song.
-                // This is expected behavior.
-                LogInfo("Inactivity timeout was cancelled.");
-            }
-            catch (ObjectDisposedException)
-            {
-                // Inactivity token was disposed, meaning we probably are being Disposed.
-                LogInfo("Inactivity timeout was disposed of. Something bad happened, so we should leave.");
-                break;
-            }
-            catch (Exception ex)
-            {
-                // Some critical error happened. We should log it and leave.
-                LogError(ex, "Fatal playback error occurred in PlaybackRunner.");
+                // Reset the inactivity token upon new iteration.
+                _inactivityCts?.Dispose();
+                _inactivityCts = new CancellationTokenSource();
                 try
                 {
-                    await context.Channel.SendMessageAsync("⚠️ A fatal error occurred during playback.");
+                    // Queue loop
+                    while (SongQueue.Count > 0)
+                    {
+                        await PlayNextSong(opusEncodeStream);
+
+                        // Check between songs if we need to stop.
+                        if (_stopRunnerCts.IsCancellationRequested)
+                        {
+                            break;
+                        }
+                    }
+
+                    LogInfo("Reached the end of the queue.");
+                    await context.Channel.SendMessageAsync("Reached the end of the queue.");
+
+                    // Queue Loop is now empty. Sit here for 10 minutes.
+                    // If a new song is added this task will throw a TaskCanceledException.
+                    // That will be caught in the catch block and we will continue.
+                    await Task.Delay(TimeSpan.FromMinutes(10), _inactivityCts.Token);
+
+                    // If we are here, inactivity timeout was reached.
+                    // Call the stop runner token, which will cause the playback task to exit.
+                    LogInfo("Inactivity timeout reached. Stopping playback runner.");
+                    break;
                 }
-                catch
+                catch (TaskCanceledException)
                 {
-                    /* Ignore */
+                    // Inactivity token was cancelled, but we probably got a new song.
+                    // This is expected behavior.
+                    LogInfo("Inactivity timeout was cancelled.");
                 }
-                break;
+                catch (ObjectDisposedException)
+                {
+                    // Inactivity token was disposed, meaning we probably are being Disposed.
+                    LogInfo("Inactivity timeout was disposed of. Something bad happened, so we should leave.");
+                    break;
+                }
             }
         }
-        
-        // The only reason we should now be here is upon request to leave.
-        LogInfo("Playback runner has stopped.");
-                
-        // Trigger the event.
-        LogInfo($"Invoking PlaybackFinished for guild {context.Guild!.Id}.");
-        if (PlaybackFinished != null)
+        catch (Exception ex)
         {
-            await PlaybackFinished.Invoke(context.Guild!.Id);
+            LogError(ex, "Fatal exception in playback runner.");
+            try
+            {
+                await context.Channel.SendMessageAsync("⚠️ A fatal error occurred during playback.");
+            }
+            catch
+            {
+                // Ignore
+            }
         }
-        LogInfo("PlaybackRunner has finished execution.");
+        finally
+        {
+            // The only reason we should now be here is upon request to leave.
+            LogInfo("Playback runner has stopped.");
+                    
+            // Trigger the event.
+            LogInfo($"Invoking PlaybackFinished for guild {context.Guild!.Id}.");
+            if (PlaybackFinished != null)
+            {
+                await PlaybackFinished.Invoke(context.Guild!.Id);
+            }
+            LogInfo("PlaybackRunner has finished execution.");
+        }
     }
 
     private async Task PlayNextSong(OpusEncodeStream outStream)
