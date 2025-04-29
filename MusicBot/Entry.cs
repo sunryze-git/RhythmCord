@@ -74,6 +74,12 @@ public static class MusicBot
         
         client.Log += DiscordClient_Log;
         client.InteractionCreate += interactionService.OnClientOnInteractionCreate;
+
+        // Log out when interrupted via keyboard
+        Console.CancelKeyPress += async delegate {
+            _logger.LogInformation("Logging out!");
+            await client.CloseAsync();
+        };
         
         await applicationCommandService.CreateCommandsAsync(client.Rest, client.Id, true);
         await client.StartAsync();
