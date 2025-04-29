@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
-using System.Text.RegularExpressions;
+using MusicBot.Parsers;
+using MusicBot.Utilities;
 using Newtonsoft.Json;
 
 namespace MusicBot.Services;
@@ -8,8 +9,6 @@ namespace MusicBot.Services;
 // Provides methods to get information from search terms.
 public static class SearchService
 {
-    private static readonly Regex UrlRegex = new("@\"^(https?|ftp)://[^\\s/$.?#].[^\\s]*$\"");
-
     private const string MetadataFlags =
         "--skip-download --dump-json --no-check-certificate --geo-bypass --ignore-errors --flat-playlist " +
         "--format bestaudio";
@@ -17,12 +16,21 @@ public static class SearchService
     private const string StreamFlags =
         "-f --no-check-certificate --geo-bypass --ignore-errors " +
         "--format bestaudio -o - ";
-    
-    internal static async Task<ImmutableArray<Parsers.Song>> GetYouTubeMetadataAsync(string term)
+
+    private class ThumbnailComparer : Comparer<Thumbnail>
     {
-        var argument = UrlRegex.IsMatch(term)
-            ? $"{term} {MetadataFlags}"
-            : $"ytsearch:\"{term}\" {MetadataFlags}";
+        public override int Compare(Thumbnail? x, Thumbnail? y)
+        {
+            if (x!.Preference is not null) return x!.Preference.Value.CompareTo(y!.Preference);
+            if (x!.Width is not null && x!.Height is not null) return (x!.Width.Value * x!.Height.Value).CompareTo(y!.Width * y!.Height);
+
+            return 0;
+        }
+    }
+    
+    internal static async Task<ImmutableArray<CustomSong>> GetMetadataAsync(string url)
+    {
+        var argument = $"{url} {MetadataFlags}";
 
         try
         {
@@ -31,29 +39,36 @@ public static class SearchService
             var parseResult = await GetDlpOutputStringAsync(argument);
             var parsedVideos = parseResult
                 .Where(s => !string.IsNullOrEmpty(s))
-                .Select(JsonConvert.DeserializeObject<Parsers.Song>)
-                .OfType<Parsers.Song>()
+                .Select(JsonConvert.DeserializeObject<Song>)
+                .OfType<Song>()
+                .Select(song => {
+                    // We don't care about the resolution
+                    var thumbnails = song.Thumbnails?
+                        .Where(thumb => thumb.Width is not null && thumb.Height is not null)
+                        .OrderDescending(new ThumbnailComparer())
+                        .Select(thumb => new YoutubeExplode.Common.Thumbnail(thumb.Url, new()))
+                        .ToImmutableList();
+                    return new CustomSong(song.WebpageUrl, song.Title, thumbnails, GetSongStream(song.Url));
+                })
                 .ToImmutableArray();
 
             return parsedVideos;
         }
-        catch (ArgumentNullException)
+        catch (ArgumentNullException ex)
         {
-            Console.WriteLine($"YT-DLP JSON response was invalid.");
+            Console.WriteLine($"yt-dlp JSON response was invalid. message={ex.Message} {ex.StackTrace} {ex.Source}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error getting YouTube metadata for term '{term}': {ex.Message}");
+            Console.WriteLine($"Error getting song/playlist metadata for URL '{url}': {ex.Message}");
         }
         
-        return ImmutableArray<Parsers.Song>.Empty;
+        return [];
     }
 
-    internal static Stream GetYouTubeStream(string term)
+    internal static Stream GetSongStream(string url)
     {
-        var argument = UrlRegex.IsMatch(term)
-            ? $"{term} {StreamFlags} --flat-playlist"
-            : $"ytsearch:\"{term}\" {StreamFlags}";
+        var argument = $"{url} {StreamFlags}";
 
         return GetDlpOutputStream(argument);
     }
@@ -67,15 +82,18 @@ public static class SearchService
     
     private static Process ConfigureDlpProcess(string arguments)
     {
-        var dlpProcess = new Process();
-        dlpProcess.StartInfo = new ProcessStartInfo
+        Console.WriteLine($"Starting yt-dlp {arguments}");
+        var dlpProcess = new Process
         {
-            FileName = "yt-dlp",
-            Arguments = arguments,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "yt-dlp",
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            }
         };
         return dlpProcess;
     }
@@ -97,12 +115,12 @@ public static class SearchService
         var errorOutput = await errorTask;
         if (!string.IsNullOrWhiteSpace(errorOutput))
         {
-            Console.WriteLine($"YT-DLP: {errorOutput}");
+            Console.WriteLine($"yt-dlp error output: {errorOutput}");
         }
 
         if (dlpProcess.ExitCode != 0)
         {
-            Console.WriteLine("YT-DLP Failed");
+            Console.WriteLine("yt-dlp failed");
         }
         
         // Convert string to array

@@ -69,7 +69,7 @@ public class AudioService(ILogger<AudioService> logger)
 
         try
         {
-            void FfmpegErrorHandler(string msg) => logger.LogError("FFmpeg Error: {ErrorMessage}", msg);
+            void FfmpegErrorHandler(string msg) => logger.LogWarning("FFmpeg message: {ErrorMessage}", msg);
 
             await FFMpegArguments
                 .FromPipeInput(new StreamPipeSource(inStream), options => options 
