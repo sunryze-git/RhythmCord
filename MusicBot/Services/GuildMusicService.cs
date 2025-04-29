@@ -13,6 +13,7 @@ namespace MusicBot.Services;
 public class GuildMusicService(
     ILogger<GuildMusicService> logger,
     AudioService audioService,
+    SearchService searchService,
     YoutubeService youtubeService) : IDisposable
 {
     // Context-specific dependencies
@@ -348,12 +349,12 @@ public class GuildMusicService(
                 LogInfo("Adding local file to queue by URL.");
                 var uri = new Uri(term);
                 var name = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
-                return [new CustomSong(term, name, null, await SearchService.GetStreamFromUri(uri))];
+                return [new CustomSong(term, name, null, await searchService.GetStreamFromUri(uri))];
             }
 
             // Query yt-dlp as fallback
             LogInfo("Querying song data via yt-dlp.");
-            var metadata = await SearchService.GetMetadataAsync(term);
+            var metadata = await searchService.GetMetadataAsync(term);
             return metadata;
         }
         

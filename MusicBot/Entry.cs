@@ -60,6 +60,7 @@ public static class MusicBot
             .AddSingleton<ApplicationCommandService<ApplicationCommandContext>>()
             .AddSingleton<InteractionService>()
             .AddSingleton<GlobalMusicService>()
+            .AddSingleton<SearchService>()
             .AddSingleton<YoutubeService>()
             .AddTransient<GuildMusicService>()
             .AddTransient<AudioService>()
