@@ -349,7 +349,7 @@ public class GuildMusicService(
                 LogInfo("Adding local file to queue by URL.");
                 var uri = new Uri(term);
                 var name = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
-                return [new CustomSong(term, name, null, await searchService.GetStreamFromUri(uri))];
+                return [new CustomSong(term, name, null, null, await searchService.GetStreamFromUri(uri))];
             }
 
             // Query yt-dlp as fallback

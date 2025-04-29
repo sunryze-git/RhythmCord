@@ -30,6 +30,7 @@ public record Song(
     [property: JsonProperty("webpage_url_domain")] string WebpageUrlDomain,
     [property: JsonProperty("extractor")] string Extractor,
     [property: JsonProperty("extractor_key")] string ExtractorKey,
+    [property: JsonProperty("artists")] IReadOnlyList<string>? Artists,
     [property: JsonProperty("playlist_count")] int? PlaylistCount,
     [property: JsonProperty("playlist")] string Playlist,
     [property: JsonProperty("playlist_id")] string PlaylistId,

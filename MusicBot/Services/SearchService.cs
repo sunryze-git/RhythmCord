@@ -49,7 +49,10 @@ public class SearchService(ILogger<SearchService> logger)
                         .OrderDescending(new ThumbnailComparer())
                         .Select(thumb => new YoutubeExplode.Common.Thumbnail(thumb.Url, new()))
                         .ToImmutableList();
-                    return new CustomSong(song.WebpageUrl, song.Title, thumbnails, GetSongStream(song.Url));
+                    var artists = song.Artists is not null && song.Artists!.Count > 0
+                        ? string.Join(", ", song.Artists!)
+                        : null;
+                    return new CustomSong(song.WebpageUrl, song.Title, artists, thumbnails, GetSongStream(song.WebpageUrl));
                 })
                 .ToImmutableArray();
 
