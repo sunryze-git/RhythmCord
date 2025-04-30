@@ -9,7 +9,9 @@ namespace MusicBot.Services;
 public static class SearchService
 {
     private static readonly Regex UrlRegex = new("@\"^(https?|ftp)://[^\\s/$.?#].[^\\s]*$\"");
-
+    private static readonly HttpClient HttpClient = new();
+    private static readonly Process DlpProcess = new();
+    
     private const string MetadataFlags =
         "--skip-download --dump-json --no-check-certificate --geo-bypass --ignore-errors --flat-playlist " +
         "--format bestaudio";
@@ -60,15 +62,13 @@ public static class SearchService
 
     internal static async Task<Stream> GetStreamFromUri(Uri url)
     {
-        using var client = new HttpClient();
-        var responseStream = await client.GetStreamAsync(url);
+        var responseStream = await HttpClient.GetStreamAsync(url);
         return responseStream;
     }
     
-    private static Process ConfigureDlpProcess(string arguments)
+    private static void ConfigureDlpProcess(string arguments)
     {
-        var dlpProcess = new Process();
-        dlpProcess.StartInfo = new ProcessStartInfo
+        DlpProcess.StartInfo = new ProcessStartInfo
         {
             FileName = "yt-dlp",
             Arguments = arguments,
@@ -77,21 +77,16 @@ public static class SearchService
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        return dlpProcess;
     }
 
     private static async Task<string[]> GetDlpOutputStringAsync(string arguments)
     {
-        using var dlpProcess = ConfigureDlpProcess(arguments);
+        ConfigureDlpProcess(arguments);
+        DlpProcess.Start();
         
-        dlpProcess.StartInfo.RedirectStandardOutput = true;
-        dlpProcess.StartInfo.RedirectStandardError = true;
-
-        dlpProcess.Start();
-        
-        var outputTask = dlpProcess.StandardOutput.ReadToEndAsync();
-        var errorTask = dlpProcess.StandardError.ReadToEndAsync();
-        await Task.WhenAll(outputTask, errorTask, dlpProcess.WaitForExitAsync());
+        var outputTask = DlpProcess.StandardOutput.ReadToEndAsync();
+        var errorTask = DlpProcess.StandardError.ReadToEndAsync();
+        await Task.WhenAll(outputTask, errorTask, DlpProcess.WaitForExitAsync());
 
         // Process error output information
         var errorOutput = await errorTask;
@@ -100,7 +95,7 @@ public static class SearchService
             Console.WriteLine($"YT-DLP: {errorOutput}");
         }
 
-        if (dlpProcess.ExitCode != 0)
+        if (DlpProcess.ExitCode != 0)
         {
             Console.WriteLine("YT-DLP Failed");
         }
@@ -112,9 +107,8 @@ public static class SearchService
 
     private static Stream GetDlpOutputStream(string arguments)
     {
-        var dlpProcess = ConfigureDlpProcess(arguments);
-        dlpProcess.Start();
-        
-        return dlpProcess.StandardOutput.BaseStream;
+        ConfigureDlpProcess(arguments);
+        DlpProcess.Start();
+        return DlpProcess.StandardOutput.BaseStream;
     }
 }
