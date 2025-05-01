@@ -8,11 +8,28 @@ using Newtonsoft.Json;
 namespace MusicBot.Services;
 
 // Provides methods to get information from search terms.
-public class SearchService(ILogger<SearchService> logger)
+public class SearchService
 {
     private readonly HttpClient _httpClient = new();
     private readonly Process _dlpProcess = new();
-    
+    private readonly ILogger<SearchService> _logger;
+
+    public SearchService(ILogger<SearchService> logger)
+    {
+        // Initializing the process here with its start info can save 
+        // a very small amount of time, but its a good optimization strategy
+        _logger = logger;
+        _dlpProcess.StartInfo = new ProcessStartInfo
+        {
+            FileName = "yt-dlp",
+            Arguments = string.Empty,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+    }
+
     private const string MetadataFlags =
         "--skip-download --dump-json --no-check-certificate --geo-bypass --ignore-errors --flat-playlist " +
         "--format bestaudio";
@@ -63,11 +80,11 @@ public class SearchService(ILogger<SearchService> logger)
         }
         catch (ArgumentNullException ex)
         {
-            logger.LogError(ex, "yt-dlp JSON response was invalid.");
+            _logger.LogError(ex, "yt-dlp JSON response was invalid.");
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error getting song/playlist metadata for URL '{Url}'.", url);
+            _logger.LogError(ex, "Error getting song/playlist metadata for URL '{Url}'.", url);
         }
         
         return [];
@@ -76,34 +93,24 @@ public class SearchService(ILogger<SearchService> logger)
     private Stream GetSongStream(string url)
     {
         var argument = $"{url} {StreamFlags}";
-
         return GetDlpOutputStream(argument);
     }
 
     internal async Task<Stream> GetStreamFromUri(Uri url)
     {
-        var responseStream = await _httpClient.GetStreamAsync(url);
-        return responseStream;
+        return await _httpClient.GetStreamAsync(url);
     }
 
-    private void ConfigureDlpProcess(string arguments)
+    private void StartDlpOperation(string arguments)
     {
-        _dlpProcess.StartInfo = new ProcessStartInfo
-        {
-            FileName = "yt-dlp",
-            Arguments = arguments,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
+        _dlpProcess.StartInfo.Arguments = arguments;
+        _dlpProcess.Start();
     }
 
     private async Task<string[]> GetDlpOutputStringAsync(string arguments)
     {
-        ConfigureDlpProcess(arguments);
-        _dlpProcess.Start();
-        
+        StartDlpOperation(arguments);
+
         var outputTask = _dlpProcess.StandardOutput.ReadToEndAsync();
         var errorTask = _dlpProcess.StandardError.ReadToEndAsync();
         await Task.WhenAll(outputTask, errorTask, _dlpProcess.WaitForExitAsync());
@@ -112,12 +119,12 @@ public class SearchService(ILogger<SearchService> logger)
         var errorOutput = await errorTask;
         if (!string.IsNullOrWhiteSpace(errorOutput))
         {
-            logger.LogWarning("yt-dlp message: {ErrorOutput}", errorOutput);
+            _logger.LogWarning("yt-dlp message: {ErrorOutput}", errorOutput);
         }
 
         if (_dlpProcess.ExitCode != 0)
         {
-            logger.LogError("yt-dlp returned error code {ErrorCode}.", _dlpProcess.ExitCode);
+            _logger.LogError("yt-dlp returned error code {ErrorCode}.", _dlpProcess.ExitCode);
         }
         
         // Convert string to array
@@ -127,8 +134,7 @@ public class SearchService(ILogger<SearchService> logger)
 
     private Stream GetDlpOutputStream(string arguments)
     {
-        ConfigureDlpProcess(arguments);
-        _dlpProcess.Start();
+        StartDlpOperation(arguments);
         return _dlpProcess.StandardOutput.BaseStream;
     }
 }
