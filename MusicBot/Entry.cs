@@ -12,7 +12,7 @@ public static class MusicBot
 {
     private const string ConfigPath = "config.json";
     private static ILogger? _logger;
-    public static IServiceProvider? Services;
+    internal static IServiceProvider? Services;
     
     public static async Task Main()
     {
@@ -42,7 +42,7 @@ public static class MusicBot
             return;
         }
         
-        var config = JsonConvert.DeserializeObject<Parsers.Config>(File.ReadAllText(ConfigPath));
+        var config = JsonConvert.DeserializeObject<Parsers.Config>(await File.ReadAllTextAsync(ConfigPath));
         if (config is null || string.IsNullOrEmpty(config.Token))
         {
             _logger.LogCritical("The configuration file was invalid or did not contain a token.");

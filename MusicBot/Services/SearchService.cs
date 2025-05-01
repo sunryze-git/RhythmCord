@@ -10,6 +10,10 @@ namespace MusicBot.Services;
 // Provides methods to get information from search terms.
 public class SearchService(ILogger<SearchService> logger)
 {
+    private readonly Regex UrlRegex = new("@\"^(https?|ftp)://[^\\s/$.?#].[^\\s]*$\"");
+    private readonly HttpClient HttpClient = new();
+    private readonly Process DlpProcess = new();
+    
     private const string MetadataFlags =
         "--skip-download --dump-json --no-check-certificate --geo-bypass --ignore-errors --flat-playlist " +
         "--format bestaudio";
@@ -79,41 +83,31 @@ public class SearchService(ILogger<SearchService> logger)
 
     internal async Task<Stream> GetStreamFromUri(Uri url)
     {
-        using var client = new HttpClient();
-        var responseStream = await client.GetStreamAsync(url);
+        var responseStream = await HttpClient.GetStreamAsync(url);
         return responseStream;
     }
-    
-    private Process ConfigureDlpProcess(string arguments)
+
+    private void ConfigureDlpProcess(string arguments)
     {
-        logger.LogDebug("Starting yt-dlp {Arguments}", arguments);
-        var dlpProcess = new Process
+        DlpProcess.StartInfo = new ProcessStartInfo
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "yt-dlp",
-                Arguments = arguments,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            }
-        };
-        return dlpProcess;
+            FileName = "yt-dlp",
+            Arguments = arguments,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        }
     }
 
     private async Task<string[]> GetDlpOutputStringAsync(string arguments)
     {
-        using var dlpProcess = ConfigureDlpProcess(arguments);
+        ConfigureDlpProcess(arguments);
+        DlpProcess.Start();
         
-        dlpProcess.StartInfo.RedirectStandardOutput = true;
-        dlpProcess.StartInfo.RedirectStandardError = true;
-
-        dlpProcess.Start();
-        
-        var outputTask = dlpProcess.StandardOutput.ReadToEndAsync();
-        var errorTask = dlpProcess.StandardError.ReadToEndAsync();
-        await Task.WhenAll(outputTask, errorTask, dlpProcess.WaitForExitAsync());
+        var outputTask = DlpProcess.StandardOutput.ReadToEndAsync();
+        var errorTask = DlpProcess.StandardError.ReadToEndAsync();
+        await Task.WhenAll(outputTask, errorTask, DlpProcess.WaitForExitAsync());
 
         // Process error output information
         var errorOutput = await errorTask;
@@ -122,9 +116,9 @@ public class SearchService(ILogger<SearchService> logger)
             logger.LogWarning("yt-dlp message: {ErrorOutput}", errorOutput);
         }
 
-        if (dlpProcess.ExitCode != 0)
+        if (DlpProcess.ExitCode != 0)
         {
-            logger.LogError("yt-dlp returned error code {ErrorCode}.", dlpProcess.ExitCode);
+            logger.LogError("yt-dlp returned error code {ErrorCode}.", DlpProcess.ExitCode);
         }
         
         // Convert string to array
@@ -134,9 +128,8 @@ public class SearchService(ILogger<SearchService> logger)
 
     private Stream GetDlpOutputStream(string arguments)
     {
-        var dlpProcess = ConfigureDlpProcess(arguments);
-        dlpProcess.Start();
-        
-        return dlpProcess.StandardOutput.BaseStream;
+        ConfigureDlpProcess(arguments);
+        DlpProcess.Start();
+        return DlpProcess.StandardOutput.BaseStream;
     }
 }
