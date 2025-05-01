@@ -8,10 +8,10 @@ namespace MusicBot.Services;
 
 public class AudioService(ILogger<AudioService> logger)
 {
-    private const string AudioFormat = "s16le"; // Using S16LE
-    private const string AudioCodec = "pcm_s16le"; // Standard Discord PCM format
-    private const int DiscordSampleRate = 48000; // Standard Discord sample rate
-    private const int DiscordChannels = 2; // Standard Discord channels (stereo)
+    private const string AudioFormat = "s16le";     // Using S16LE
+    private const string AudioCodec = "pcm_s16le";  // Standard Discord PCM format
+    private const int DiscordSampleRate = 48000;    // Standard Discord sample rate
+    private const int DiscordChannels = 2;          // Standard Discord channels (stereo)
     
     internal bool Looping { get; set; }
 
