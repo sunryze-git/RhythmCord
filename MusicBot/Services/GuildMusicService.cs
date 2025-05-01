@@ -24,6 +24,8 @@ public class GuildMusicService(
     // Audio Client I hate it
     private VoiceClient? _voiceClient;
 
+    private static readonly string[] AudioFileTypes = [".wav", ".mp3", ".ogg", ".flac", ".m4a", ".wma", ".opus"];
+
     public event Func<ulong, Task>? PlaybackFinished;
     
     public List<IVideo> SongQueue { get; private set; } = [];
@@ -306,16 +308,12 @@ public class GuildMusicService(
         await _invokedChannel!.SendMessageAsync(message);
     }
 
-    private static bool IsLikelyAudioFile(string url)
+    private static bool IsLikelyAudioFile(Uri url)
     {
-        if (string.IsNullOrEmpty(url)) return false;
-
         try
         {
-            var uri = new Uri(url);
-            var extension = Path.GetExtension(uri.LocalPath).ToLowerInvariant();
-            string[] audioExtensions = [".wav", ".mp3", ".ogg", ".flac", ".m4a", ".wma", ".opus"];
-            return Array.Exists(audioExtensions, x => x == extension);
+            var extension = Path.GetExtension(url.LocalPath).ToLowerInvariant();
+            return Array.Exists(AudioFileTypes, x => x == extension);
         }
         catch (UriFormatException)
         {
@@ -325,39 +323,44 @@ public class GuildMusicService(
 
     private async Task<IReadOnlyList<IVideo>> GetSongsFromTermAsync(string term)
     {
-        if (term.StartsWith("https://"))
+        // This is a URL.
+        if (Uri.IsWellFormedUriString(term, UriKind.Absolute))
         {
-            if (term.Contains("youtube.com/playlist"))
+            var uri = new Uri(term);
+            
+            // YouTube URL, we can use YouTubeExplode
+            if (uri.Authority == "www.youtube.com")
             {
-                LogInfo("Adding playlist to queue by URL.");
-                return await youtubeService.GetPlaylistVideosAsync(term);
+                switch (uri.AbsolutePath)
+                {
+                    case "/watch":
+                        LogInfo("Adding video to queue by URI.");
+                        var video = await youtubeService.GetVideoAsync(uri.AbsoluteUri);
+                        return video != null ? [video] : Array.Empty<IVideo>();
+                    case "/playlist":
+                        LogInfo("Adding playlist to queue by URI.");
+                        return await youtubeService.GetPlaylistVideosAsync(uri.AbsoluteUri);
+                }
             }
             
-            if (term.Contains("youtube.com/watch"))
+            // Not YouTube URL see if its an audio file
+            if (IsLikelyAudioFile(uri))
             {
-                LogInfo("Adding a song to queue by URL.");
-                var video = await youtubeService.GetVideoAsync(term);
-                if (video is null) return [];
-                return [video];
-            }
-
-            if (IsLikelyAudioFile(term))
-            {
-                LogInfo("Adding local file to queue by URL.");
-                var uri = new Uri(term);
+                LogInfo("Adding file to queue by URI.");
                 var name = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
                 return [new CustomSong(term, name, null, null, await searchService.GetStreamFromUri(uri))];
             }
-
-            // Query yt-dlp as fallback
+            
+            // YT-DLP Fallback
             LogInfo("Querying song data via yt-dlp.");
             var metadata = await searchService.GetMetadataAsync(term);
             return metadata;
         }
         
+        // Not a URL.
         LogInfo("Adding a song to queue by search.");
         var videoObject = await youtubeService.GetVideoAsync(term);
-        return videoObject != null ? [videoObject] : [];
+        return videoObject != null ? [videoObject] : Array.Empty<IVideo>();
     }
     
     internal async Task LeaveVoiceAsync()
