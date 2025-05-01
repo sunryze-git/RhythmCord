@@ -1,8 +1,6 @@
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MusicBot.Utilities;
 using NetCord;
-using NetCord.Gateway;
 using NetCord.Gateway.Voice;
 using NetCord.Rest;
 using NetCord.Services.ApplicationCommands;
@@ -128,7 +126,6 @@ public class GuildMusicService(
         }
         
         var songsToAdd = await GetSongsFromTermAsync(term);
-        
         if (!songsToAdd.Any())
         {
             LogInfo("There were no results from the given term.");
@@ -138,9 +135,9 @@ public class GuildMusicService(
 
         var added = AddSongsToQueue(songsToAdd, next);
         await context.Interaction.ModifyResponseAsync(message => message.Content = $"Added {added} songs to queue.");
-
+        
         StartQueue(context, _voiceClient!);
-
+        
         return songsToAdd[0];
     }
 
@@ -262,11 +259,11 @@ public class GuildMusicService(
             SongQueue.RemoveAt(0);
 
             LogInfo($"Playing song '{CurrentSong?.Title ?? "Unknown"}'");
-
+            
             inputStream = songIteration is CustomSong custom
                 ? custom.Source
                 : await youtubeService.GetAudioStreamAsync(songIteration);
-            
+                        
             if (inputStream == null) throw new InvalidOperationException("Input stream is null.");
 
             await Task.Delay(50, _skipSongCts.Token);
