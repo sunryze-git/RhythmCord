@@ -41,7 +41,10 @@ public class AudioService(ILogger<AudioService> logger)
                     }
                 }
                 
-                await StartPcmStream(inStream, outStream, stopToken);
+                await using var buffer = new MemoryStream();
+                await inStream.CopyToAsync(buffer, stopToken); // Copy input stream to buffer
+                buffer.Seek(0, SeekOrigin.Begin); // Reset buffer position
+                await StartPcmStream(buffer, outStream, stopToken);
                 
                 logger.LogDebug("Flushing Discord audio stream.");
                 await outStream.FlushAsync(stopToken);
@@ -73,7 +76,7 @@ public class AudioService(ILogger<AudioService> logger)
 
             await FFMpegArguments
                 .FromPipeInput(new StreamPipeSource(inStream), options => options 
-                    .WithCustomArgument("-re"))
+                    .WithCustomArgument("-fflags +nobuffer -flags +low_delay -strict -2"))
                 .OutputToPipe(new StreamPipeSink(outStream), options => options
                     .ForceFormat(AudioFormat)
                     .WithAudioCodec(AudioCodec)
