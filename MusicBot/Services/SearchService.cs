@@ -51,12 +51,9 @@ public class SearchService
     }
 
     private const string MetadataFlags =
-        "--skip-download --dump-json --no-check-certificate --geo-bypass --ignore-errors --flat-playlist " +
-        "--format bestaudio";
+        """ --skip-download -f "ba[acodec=opus]" --dump-json --no-check-certificate --geo-bypass --ignore-errors --flat-playlist """;
 
-    private const string StreamFlags =
-        "-f --no-check-certificate --geo-bypass --ignore-errors " +
-        "--format bestaudio -o - ";
+    private const string StreamFlags = """-f "ba[acodec=opus]" --concurrent-fragments 12 --no-check-certificate --geo-bypass --ignore-errors -o - """;
 
     private class ThumbnailComparer : Comparer<Thumbnail>
     {
