@@ -33,11 +33,15 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
                 targetChannel!.ChannelId.GetValueOrDefault()
                 );
         }
-
+        
         var manager = GetManager();
         var song = await manager.AddToQueueAsync(query, insertNext, ctx, audioClient);
 
-        if (song == null) return;
+        if (song == null)
+        {
+            await RespondAsync(InteractionCallback.Message("No results found."));
+            return;
+        }
 
         var embed = new EmbedProperties
         {
@@ -51,10 +55,10 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
             }
         };
 
-        await ModifyResponseAsync(properties =>
+        await RespondAsync(InteractionCallback.Message(new InteractionMessageProperties
         {
-            properties.AddEmbeds(embed);
-        });
+            Embeds = [embed]
+        }));
     }
     
     [SlashCommand("stop", "Stops song playback, clears queue.")]
