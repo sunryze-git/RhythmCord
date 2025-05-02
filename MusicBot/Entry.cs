@@ -27,8 +27,8 @@ public static class MusicBot
                 .AddSimpleConsole(options =>
                 {
                     options.IncludeScopes = true;
-                    options.SingleLine = false;
-                    options.TimestampFormat = "[MM/dd/yyyy HH:mm:ss]";
+                    options.SingleLine = true;
+                    options.TimestampFormat = "[MM/dd/yyyy HH:mm:ss.fffffff]";
                 });
         });
         
