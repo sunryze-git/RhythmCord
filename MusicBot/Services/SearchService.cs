@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Net;
 using MusicBot.Parsers;
 using MusicBot.Utilities;
 using Microsoft.Extensions.Logging;
@@ -10,7 +11,7 @@ namespace MusicBot.Services;
 // Provides methods to get information from search terms.
 public class SearchService
 {
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient;
     private readonly Process _dlpProcess = new();
     private readonly ILogger<SearchService> _logger;
 
@@ -18,6 +19,14 @@ public class SearchService
     {
         // Initializing the process here with its start info can save 
         // a very small amount of time, but its a good optimization strategy
+        var handler = new SocketsHttpHandler
+        {
+            EnableMultipleHttp2Connections = true,
+            EnableMultipleHttp3Connections = true,
+            MaxConnectionsPerServer = 100,
+            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+        };
+        _httpClient = new HttpClient(handler);
         _logger = logger;
         _dlpProcess.StartInfo = new ProcessStartInfo
         {
@@ -27,6 +36,17 @@ public class SearchService
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true
+        };
+        _dlpProcess.EnableRaisingEvents = true;
+        _dlpProcess.Exited += (sender, args) =>
+        {
+            _logger.LogWarning("yt-dlp process exited with code {ExitCode}.", _dlpProcess.ExitCode);
+            // YT-DLP Log
+            var errorOutput = _dlpProcess.StandardError.ReadToEnd();
+            if (!string.IsNullOrWhiteSpace(errorOutput))
+            {
+                _logger.LogWarning("YT-DLP Log: {ErrorOutput}", errorOutput);
+            }
         };
     }
 
