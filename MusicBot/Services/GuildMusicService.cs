@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using MusicBot.Utilities;
 using NetCord;
+using NetCord.Gateway;
 using NetCord.Gateway.Voice;
 using NetCord.Rest;
 using NetCord.Services.ApplicationCommands;
@@ -83,7 +84,7 @@ public class GuildMusicService(
         if (_playbackTask == null)
         {
             _playbackTask = Task.Run(() => PlaybackRunner(context, voiceClient));
-            LogInfo("Playback task started.");
+            LogInfo("Playback runner start initiated.");
         }
         else
         {
@@ -118,26 +119,26 @@ public class GuildMusicService(
     
     public async Task<IVideo?> AddToQueueAsync(string term, bool next, ApplicationCommandContext context, VoiceClient? voiceClient)
     {
+        LogInfo("GuildMusicService has been invoked.");
         // Let the caller know we are attempting to do this.
-        var callback = InteractionCallback.DeferredMessage(MessageFlags.Loading);
-        await context.Interaction.SendResponseAsync(callback);
+        //await context.Interaction.SendResponseAsync(InteractionCallback.DeferredMessage());
+        LogInfo("Interaction responded.");
 
         // Update our internal voiceClient, since this will represent a "new" VC.
         if (voiceClient != null)
         {
             _voiceClient = voiceClient;
         }
-        
+        LogInfo("Understanding the given term.");
         var songsToAdd = await GetSongsFromTermAsync(term);
+        LogInfo("Songs have been parsed.");
         if (!songsToAdd.Any())
         {
             LogInfo("There were no results from the given term.");
-            await context.Interaction.ModifyResponseAsync(message => message.Content = "No results from the given term.");
             return null;
         }
 
-        var added = AddSongsToQueue(songsToAdd, next);
-        await context.Interaction.ModifyResponseAsync(message => message.Content = $"Added {added} songs to queue.");
+        AddSongsToQueue(songsToAdd, next);
         
         StartQueue(context, _voiceClient!);
         
@@ -167,7 +168,9 @@ public class GuildMusicService(
     {
         try
         {
-            LogInfo("Playback runner has started.");
+            LogInfo("Playback runner has started."); 
+            
+            // Takes 500ms on first run
             await audioClient.StartAsync();
             await audioClient.EnterSpeakingStateAsync(SpeakingFlags.Microphone);
             await using var outStream = audioClient.CreateOutputStream();
@@ -266,6 +269,8 @@ public class GuildMusicService(
             inputStream = songIteration is CustomSong custom
                 ? custom.Source
                 : await youtubeService.GetAudioStreamAsync(songIteration);
+            
+            LogInfo($"Stream for '{CurrentSong?.Title ?? "Unknown"}' is here.");
                         
             if (inputStream == null) throw new InvalidOperationException("Input stream is null.");
 
