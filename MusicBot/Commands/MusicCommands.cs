@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using MusicBot.Services;
+using MusicBot.Utilities;
 using NetCord;
 using NetCord.Gateway.Voice;
 using NetCord.Rest;
@@ -16,11 +17,13 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
         [SlashCommandParameter(Name = "next", Description = "Insert as next in queue")] bool insertNext = false
     )
     {
+        await RespondAsync(InteractionCallback.DeferredMessage());
+
         var ctx = Context;
         VoiceClient? audioClient = null;
         if (!UserInVoiceChannel())
         {
-            await RespondAsync(InteractionCallback.Message("You are not in a voice channel."));
+            await ModifyResponseAsync(message => message.Content = "You are not in a voice channel.");
             return;
         }
 
@@ -31,34 +34,46 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
             audioClient = await ctx.Client.JoinVoiceChannelAsync(
                 ctx.Guild.Id,
                 targetChannel!.ChannelId.GetValueOrDefault()
-                );
+            );
         }
-        
+
         var manager = GetManager();
-        var song = await manager.AddToQueueAsync(query, insertNext, ctx, audioClient);
-
-        if (song == null)
+        try
         {
-            await RespondAsync(InteractionCallback.Message("No results found."));
-            return;
-        }
+            var song = await manager.AddToQueueAsync(query, insertNext, ctx, audioClient);
 
-        var embed = new EmbedProperties
-        {
-            Title = "Added to Queue",
-            Description = $"**{song.Title}**\n**{song.Author}**",
-            Thumbnail = new EmbedThumbnailProperties(song.Thumbnails[0].Url),
-            Color = new Color(0, 0, 255),
-            Footer = new EmbedFooterProperties
+            if (song == null)
             {
-                Text = $"Requested by {ctx.User.Username}"
+                await ModifyResponseAsync(message => message.Content = "No results found for your query.");
+                return;
             }
-        };
 
-        await RespondAsync(InteractionCallback.Message(new InteractionMessageProperties
+            var embed = new EmbedProperties
+            {
+                Title = "Added to Queue",
+                Description = $"**{song.Title}**\n**{song.Author}**",
+                Thumbnail = new EmbedThumbnailProperties(song.Thumbnails[0].Url),
+                Color = new Color(0, 0, 255),
+                Footer = new EmbedFooterProperties
+                {
+                    Text = $"Requested by {ctx.User.Username}"
+                }
+            };
+
+            await ModifyResponseAsync(message =>
+            {
+                message.Content = string.Empty;
+                message.Embeds = [embed];
+            });
+        }
+        catch (SearchOperationException e)
         {
-            Embeds = [embed]
-        }));
+            var response = $"""
+                            An error occurred while searching for the song.
+                            ```{e.Message}```
+                            """;
+            await ModifyResponseAsync(message => message.Content = response);
+        }
     }
     
     [SlashCommand("stop", "Stops song playback, clears queue.")]
