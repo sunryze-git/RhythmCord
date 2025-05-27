@@ -51,9 +51,9 @@ public class SearchService
     }
 
     private const string MetadataFlags =
-        """ --skip-download -f "ba[acodec=opus]" --dump-json --no-check-certificate --geo-bypass --ignore-errors --flat-playlist """;
+        """ --skip-download -f bestaudio --dump-json --no-check-certificate --geo-bypass --ignore-errors --flat-playlist """;
 
-    private const string StreamFlags = """-f "ba[acodec=opus]" --concurrent-fragments 12 --no-check-certificate --geo-bypass --ignore-errors -o - """;
+    private const string StreamFlags = """-f bestaudio --concurrent-fragments 12 --no-check-certificate --geo-bypass --ignore-errors -o - """;
 
     private class ThumbnailComparer : Comparer<Thumbnail>
     {
@@ -79,7 +79,8 @@ public class SearchService
                 .Where(s => !string.IsNullOrEmpty(s))
                 .Select(JsonConvert.DeserializeObject<Song>)
                 .OfType<Song>()
-                .Select(song => {
+                .Select(song =>
+                {
                     // We don't care about the resolution
                     var thumbnails = song.Thumbnails?
                         .Where(thumb => thumb.Width is not null && thumb.Height is not null)
@@ -89,7 +90,8 @@ public class SearchService
                     var artists = song.Artists is not null && song.Artists!.Count > 0
                         ? string.Join(", ", song.Artists!)
                         : null;
-                    return new CustomSong(song.WebpageUrl, song.Title, artists, thumbnails, GetSongStream(song.WebpageUrl));
+                    return new CustomSong(song.WebpageUrl, song.Title, artists, thumbnails,
+                        GetSongStream(song.WebpageUrl));
                 })
                 .ToImmutableArray();
 
@@ -98,6 +100,10 @@ public class SearchService
         catch (ArgumentNullException ex)
         {
             _logger.LogError(ex, "yt-dlp JSON response was invalid.");
+        }
+        catch (SearchOperationException ex)
+        {
+            throw; // pass this one up
         }
         catch (Exception ex)
         {
@@ -142,6 +148,7 @@ public class SearchService
         if (_dlpProcess.ExitCode != 0)
         {
             _logger.LogError("yt-dlp returned error code {ErrorCode}.", _dlpProcess.ExitCode);
+            throw new SearchOperationException(errorOutput);
         }
         
         // Convert string to array
