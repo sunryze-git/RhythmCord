@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using MusicBot.Utilities;
 using YoutubeExplode;
 using YoutubeExplode.Common;
 using YoutubeExplode.Playlists;
@@ -93,7 +94,7 @@ public class YoutubeService(ILogger<YoutubeService> logger)
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to get audio stream for video: {VideoTitle}", video.Title);
-            return null;
+            throw new SearchOperationException(ex.Message);
         }
     }
 }
