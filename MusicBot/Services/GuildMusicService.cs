@@ -1,9 +1,7 @@
 using Microsoft.Extensions.Logging;
 using MusicBot.Utilities;
 using NetCord;
-using NetCord.Gateway;
 using NetCord.Gateway.Voice;
-using NetCord.Rest;
 using NetCord.Services.ApplicationCommands;
 using YoutubeExplode.Videos;
 
@@ -25,7 +23,7 @@ public class GuildMusicService(
     // Audio Client I hate it
     private VoiceClient? _voiceClient;
 
-    private static readonly string[] AudioFileTypes = [".wav", ".mp3", ".ogg", ".flac", ".m4a", ".wma", ".opus"];
+    private static readonly string[] AudioFileTypes = [".wav", ".mp3", ".mp4", ".ogg", ".flac", ".m4a", ".wma", ".opus"];
 
     public event Func<ulong, Task>? PlaybackFinished;
     
@@ -120,9 +118,6 @@ public class GuildMusicService(
     public async Task<IVideo?> AddToQueueAsync(string term, bool next, ApplicationCommandContext context, VoiceClient? voiceClient)
     {
         LogInfo("GuildMusicService has been invoked.");
-        // Let the caller know we are attempting to do this.
-        //await context.Interaction.SendResponseAsync(InteractionCallback.DeferredMessage());
-        LogInfo("Interaction responded.");
 
         // Update our internal voiceClient, since this will represent a "new" VC.
         if (voiceClient != null)
@@ -130,24 +125,34 @@ public class GuildMusicService(
             _voiceClient = voiceClient;
         }
         LogInfo("Understanding the given term.");
-        var songsToAdd = await GetSongsFromTermAsync(term);
-        LogInfo("Songs have been parsed.");
-        if (!songsToAdd.Any())
+        
+        // Errors while adding the song will be thrown up the stack, so the initial caller can update the 
+        // interaction response. This is so we can basically send "callbacks" to the original invocation.
+        try
         {
-            LogInfo("There were no results from the given term.");
-            return null;
-        }
+            var songsToAdd = await GetSongsFromTermAsync(term);
+            LogInfo("Songs have been parsed.");
+            if (!songsToAdd.Any())
+            {
+                LogInfo("There were no results from the given term.");
+                return null;
+            }
 
-        AddSongsToQueue(songsToAdd, next);
+            AddSongsToQueue(songsToAdd, next);
         
-        StartQueue(context, _voiceClient!);
+            StartQueue(context, _voiceClient!);
         
-        return songsToAdd[0];
+            return songsToAdd[0];
+        }
+        catch (SearchOperationException e)
+        {
+            LogError(e, "Search operation failed.");
+            throw;
+        }
     }
 
-    private int AddSongsToQueue(IReadOnlyList<IVideo> songs, bool next)
+    private void AddSongsToQueue(IReadOnlyList<IVideo> songs, bool next)
     {
-        var addedCount = 0;
         foreach (var song in songs)
         {
             if (next)
@@ -158,10 +163,7 @@ public class GuildMusicService(
             {
                 SongQueue.Add(song);
             }
-            addedCount++;
         }
-
-        return addedCount;
     }
 
     private async Task PlaybackRunner(ApplicationCommandContext context, VoiceClient audioClient)
@@ -258,6 +260,7 @@ public class GuildMusicService(
         Stream? inputStream = null;
         _skipSongCts = new CancellationTokenSource();
         
+        // Errors during playback will be sent as a new message in the invoked channel.
         try
         {
             var songIteration = SongQueue.First();
@@ -334,11 +337,12 @@ public class GuildMusicService(
             var uri = new Uri(term);
             
             // YouTube URL, we can use YouTubeExplode
-            if (uri.Authority == "www.youtube.com")
+            if (uri.Authority.EndsWith("youtube.com", StringComparison.InvariantCulture))
             {
                 switch (uri.AbsolutePath)
                 {
                     case "/watch":
+                    case "/shorts":
                         LogInfo("Adding video to queue by URI.");
                         var video = await youtubeService.GetVideoAsync(uri.AbsoluteUri);
                         return video != null ? [video] : Array.Empty<IVideo>();
@@ -348,7 +352,7 @@ public class GuildMusicService(
                 }
             }
             
-            // Not YouTube URL see if its an audio file
+            // Not YouTube URL see if it's an audio file
             if (IsLikelyAudioFile(uri))
             {
                 LogInfo("Adding file to queue by URI.");
