@@ -41,6 +41,7 @@ public class AudioService(ILogger<AudioService> logger)
                     }
                 }
                 
+                // a buffer is better for reliability, although it does increase startup time
                 await using var buffer = new MemoryStream();
                 await inStream.CopyToAsync(buffer, stopToken); // Copy input stream to buffer
                 buffer.Seek(0, SeekOrigin.Begin); // Reset buffer position
@@ -75,12 +76,11 @@ public class AudioService(ILogger<AudioService> logger)
             void FfmpegErrorHandler(string msg) => logger.LogWarning("FFmpeg message: {ErrorMessage}", msg);
 
             await FFMpegArguments
-                .FromPipeInput(new StreamPipeSource(inStream), options => options 
-                    .WithCustomArgument("-fflags +nobuffer -flags +low_delay -strict -2"))
+                .FromPipeInput(new StreamPipeSource(inStream))
                 .OutputToPipe(new StreamPipeSink(outStream), options => options
                     .ForceFormat(AudioFormat)
                     .WithAudioCodec(AudioCodec)
-                    .WithAudioSamplingRate()
+                    .WithAudioSamplingRate() 
                     .WithAudioBitrate(AudioQuality.Low)
                     .WithCustomArgument($"-ac {DiscordChannels} -af volume=-10dB"))
                 .CancellableThrough(stopToken)
