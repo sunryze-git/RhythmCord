@@ -39,6 +39,7 @@ public static class MusicBot
         if (!File.Exists(ConfigPath))
         {
             _logger.LogCritical("No configuration found. Create a config.json and input a token.");
+            await Task.Delay(1000);
             return;
         }
         
@@ -46,6 +47,7 @@ public static class MusicBot
         if (config is null || string.IsNullOrEmpty(config.Token))
         {
             _logger.LogCritical("The configuration file was invalid or did not contain a token.");
+            await Task.Delay(1000);
             return;
         }
 
