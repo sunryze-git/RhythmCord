@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using MusicBot.Exceptions;
 using MusicBot.Utilities;
 using NetCord;
 using NetCord.Gateway.Voice;
@@ -115,40 +116,32 @@ public class GuildMusicService(
         SongQueue.Shuffle();
     }
     
-    public async Task<IVideo?> AddToQueueAsync(string term, bool next, ApplicationCommandContext context, VoiceClient? voiceClient)
+    public async Task<IVideo> AddToQueueAsync(string term, bool next, ApplicationCommandContext context)
     {
         LogInfo("GuildMusicService has been invoked.");
-
-        // Update our internal voiceClient, since this will represent a "new" VC.
-        if (voiceClient != null)
+        
+        // Join VC if we are not in it.
+        // assumes that if the playbackTask is not running, this is the first time this is called
+        if (_playbackTask == null)
         {
-            _voiceClient = voiceClient;
+            var targetChannel = context.Guild!.VoiceStates.GetValueOrDefault(context.User.Id);
+            _voiceClient = await context.Client.JoinVoiceChannelAsync(
+                context.Guild.Id,
+                targetChannel!.ChannelId.GetValueOrDefault()
+            );
         }
         LogInfo("Understanding the given term.");
         
         // Errors while adding the song will be thrown up the stack, so the initial caller can update the 
         // interaction response. This is so we can basically send "callbacks" to the original invocation.
-        try
-        {
-            var songsToAdd = await GetSongsFromTermAsync(term);
-            LogInfo("Songs have been parsed.");
-            if (!songsToAdd.Any())
-            {
-                LogInfo("There were no results from the given term.");
-                return null;
-            }
+        var songsToAdd = await GetSongsFromTermAsync(term);
+        LogInfo("Songs have been parsed.");
+        if (!songsToAdd.Any()) throw new SearchException("No songs were found for the given term.");
 
-            AddSongsToQueue(songsToAdd, next);
-        
-            StartQueue(context, _voiceClient!);
-        
-            return songsToAdd[0];
-        }
-        catch (SearchOperationException e)
-        {
-            LogError(e, "Search operation failed.");
-            throw;
-        }
+        AddSongsToQueue(songsToAdd, next);
+        StartQueue(context, _voiceClient!);
+    
+        return songsToAdd[0];
     }
 
     private void AddSongsToQueue(IReadOnlyList<IVideo> songs, bool next)
