@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using MusicBot.Exceptions;
 using MusicBot.Services;
-using MusicBot.Utilities;
 using NetCord;
 using NetCord.Gateway.Voice;
 using NetCord.Rest;
@@ -18,46 +18,22 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
     )
     {
         await RespondAsync(InteractionCallback.DeferredMessage());
-
-        var ctx = Context;
-        VoiceClient? audioClient = null;
         if (!UserInVoiceChannel())
         {
             await ModifyResponseAsync(message => message.Content = "You are not in a voice channel.");
             return;
         }
 
-        if (!SelfInVoiceChannel())
-        {
-            // Join VC and assign a voice client
-            var targetChannel = ctx.Guild!.VoiceStates.GetValueOrDefault(Context.User.Id);
-            audioClient = await ctx.Client.JoinVoiceChannelAsync(
-                ctx.Guild.Id,
-                targetChannel!.ChannelId.GetValueOrDefault()
-            );
-        }
-
         var manager = GetManager();
         try
         {
-            var song = await manager.AddToQueueAsync(query, insertNext, ctx, audioClient);
-
-            if (song == null)
-            {
-                await ModifyResponseAsync(message => message.Content = "No results found for your query.");
-                return;
-            }
-
+            var song = await manager.AddToQueueAsync(query, insertNext, Context);
             var embed = new EmbedProperties
             {
                 Title = "Added to Queue",
                 Description = $"**{song.Title}**\n**{song.Author}**",
                 Thumbnail = new EmbedThumbnailProperties(song.Thumbnails[0].Url),
-                Color = new Color(0, 0, 255),
-                Footer = new EmbedFooterProperties
-                {
-                    Text = $"Requested by {ctx.User.Username}"
-                }
+                Color = new Color(0, 0, 255)
             };
 
             await ModifyResponseAsync(message =>
@@ -66,10 +42,10 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
                 message.Embeds = [embed];
             });
         }
-        catch (SearchOperationException e)
+        catch (SearchException e)
         {
             var response = $"""
-                            An error occurred while searching for the song.
+                            An error occurred while adding the song:
                             ```{e.Message}```
                             """;
             await ModifyResponseAsync(message => message.Content = response);
@@ -119,8 +95,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
     
     [SlashCommand("leave", "Leaves the VC.")]
     public async Task Leave()
-    {
-        var ctx = Context;
+    { 
         if (!CheckVoiceChannelStatus())
         {
             await RespondAsync(InteractionCallback.Message("This command is not available."));

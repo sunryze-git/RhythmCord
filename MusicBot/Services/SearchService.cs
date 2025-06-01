@@ -4,6 +4,7 @@ using System.Net;
 using MusicBot.Parsers;
 using MusicBot.Utilities;
 using Microsoft.Extensions.Logging;
+using MusicBot.Exceptions;
 using Newtonsoft.Json;
 
 namespace MusicBot.Services;
@@ -101,7 +102,7 @@ public class SearchService
         {
             _logger.LogError(ex, "yt-dlp JSON response was invalid.");
         }
-        catch (SearchOperationException ex)
+        catch (SearchException ex)
         {
             throw; // pass this one up
         }
@@ -148,7 +149,7 @@ public class SearchService
         if (_dlpProcess.ExitCode != 0)
         {
             _logger.LogError("yt-dlp returned error code {ErrorCode}.", _dlpProcess.ExitCode);
-            throw new SearchOperationException(errorOutput);
+            throw new SearchException(errorOutput);
         }
         
         // Convert string to array
