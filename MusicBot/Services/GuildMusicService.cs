@@ -140,7 +140,7 @@ public class GuildMusicService(
         // interaction response. This is so we can basically send "callbacks" to the original invocation.
         var songsToAdd = await GetSongsFromTermAsync(term);
         LogInfo("Songs have been parsed.");
-        if (!songsToAdd.Any()) throw new SearchException("No songs were found for the given term.");
+        if (songsToAdd.Count == 0) throw new SearchException("No songs were found for the given term.");
 
         AddSongsToQueue(songsToAdd, next);
         StartQueue(context, _voiceClient!);
@@ -266,6 +266,7 @@ public class GuildMusicService(
 
             LogInfo($"Playing song '{CurrentSong?.Title ?? "Unknown"}'");
             
+            // Find the input stream for the song.
             inputStream = songIteration is CustomSong custom
                 ? custom.Source // used for YT-DLP, Cobalt API, and direct file playback
                 : await youtubeService.GetAudioStreamAsync(songIteration); // Used for YouTubeExplode
