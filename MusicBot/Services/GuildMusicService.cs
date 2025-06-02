@@ -5,6 +5,8 @@ using NetCord;
 using NetCord.Gateway.Voice;
 using NetCord.Services.ApplicationCommands;
 using YoutubeExplode.Videos;
+using CobaltApi;
+using YoutubeExplode.Common;
 
 namespace MusicBot.Services;
 
@@ -20,6 +22,8 @@ public class GuildMusicService(
     private CancellationTokenSource? _stopRunnerCts;
     private CancellationTokenSource? _skipSongCts;
     private CancellationTokenSource? _inactivityCts;
+
+    private readonly CobaltClient _cobaltClient = new("http://192.168.1.91:9000");
     
     // Audio Client I hate it
     private VoiceClient? _voiceClient;
@@ -263,8 +267,8 @@ public class GuildMusicService(
             LogInfo($"Playing song '{CurrentSong?.Title ?? "Unknown"}'");
             
             inputStream = songIteration is CustomSong custom
-                ? custom.Source
-                : await youtubeService.GetAudioStreamAsync(songIteration);
+                ? custom.Source // used for YT-DLP, Cobalt API, and direct file playback
+                : await youtubeService.GetAudioStreamAsync(songIteration); // Used for YouTubeExplode
             
             LogInfo($"Stream for '{CurrentSong?.Title ?? "Unknown"}' is here.");
                         
@@ -324,45 +328,68 @@ public class GuildMusicService(
 
     private async Task<IReadOnlyList<IVideo>> GetSongsFromTermAsync(string term)
     {
-        // This is a URL.
-        if (Uri.IsWellFormedUriString(term, UriKind.Absolute))
+        // Not a URL, add by search.
+        if (!Uri.IsWellFormedUriString(term, UriKind.Absolute))
         {
-            var uri = new Uri(term);
-            
-            // YouTube URL, we can use YouTubeExplode
-            if (uri.Authority.EndsWith("youtube.com", StringComparison.InvariantCulture))
-            {
-                switch (uri.AbsolutePath)
-                {
-                    case "/watch":
-                    case "/shorts":
-                        LogInfo("Adding video to queue by URI.");
-                        var video = await youtubeService.GetVideoAsync(uri.AbsoluteUri);
-                        return video != null ? [video] : Array.Empty<IVideo>();
-                    case "/playlist":
-                        LogInfo("Adding playlist to queue by URI.");
-                        return await youtubeService.GetPlaylistVideosAsync(uri.AbsoluteUri);
-                }
-            }
-            
-            // Not YouTube URL see if it's an audio file
-            if (IsLikelyAudioFile(uri))
-            {
-                LogInfo("Adding file to queue by URI.");
-                var name = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
-                return [new CustomSong(term, name, null, null, await searchService.GetStreamFromUri(uri))];
-            }
-            
-            // YT-DLP Fallback
-            LogInfo("Querying song data via yt-dlp.");
-            var metadata = await searchService.GetMetadataAsync(term);
-            return metadata;
+            LogInfo("Adding a song to queue by search.");
+            var videoObject = await youtubeService.GetVideoAsync(term);
+            return videoObject != null ? [videoObject] : Array.Empty<IVideo>();
         }
         
-        // Not a URL.
-        LogInfo("Adding a song to queue by search.");
-        var videoObject = await youtubeService.GetVideoAsync(term);
-        return videoObject != null ? [videoObject] : Array.Empty<IVideo>();
+        // If we are here, it is a URL.
+        var uri = new Uri(term);
+            
+        // Handle YouTube URLs.
+        if (uri.Authority.EndsWith("youtube.com", StringComparison.InvariantCulture))
+        {
+            switch (uri.AbsolutePath)
+            {
+                // Playlists must still be done with the YouTubeExplode API
+                case "/playlist":
+                    LogInfo("Adding playlist to queue by URI.");
+                    return await youtubeService.GetPlaylistVideosAsync(uri.AbsoluteUri);
+                default:
+                    LogInfo("Adding video to queue using Cobalt API.");
+                    var request = new Request
+                    {
+                        url = uri.ToString(),
+                        audioFormat = "opus"
+                    };
+                    var video = await _cobaltClient.GetCobaltResponseAsync(request);
+                    var stream = await _cobaltClient.GetTunnelStreamAsync(video);
+                    return [new CustomSong(term, video.Title, video.Artist, [new Thumbnail(string.Empty, new Resolution())], stream)];
+            }
+        }
+        
+        // Try with Cobalt API.
+        try
+        {
+            LogInfo("Adding video to queue using Cobalt API.");
+            var request = new Request
+            {
+                url = uri.ToString(),
+                audioFormat = "opus"
+            };
+            var video = await _cobaltClient.GetCobaltResponseAsync(request);
+            var stream = await _cobaltClient.GetTunnelStreamAsync(video);
+            return [new CustomSong(term, video.Title, video.Artist, [new Thumbnail(string.Empty, new Resolution())], stream)];
+        } catch (Exception ex)
+        {
+            LogError(ex, "Failed to get video from Cobalt API.");
+        }
+            
+        // Handle audio file URLs.
+        if (IsLikelyAudioFile(uri))
+        {
+            LogInfo("Adding file to queue by URI.");
+            var name = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
+            return [new CustomSong(term, name, null, null, await searchService.GetStreamFromUri(uri))];
+        }
+            
+        // In all other cases, attempt to get via yt-dlp.
+        LogInfo("Querying song data via yt-dlp.");
+        var metadata = await searchService.GetMetadataAsync(term);
+        return metadata;
     }
     
     internal async Task LeaveVoiceAsync()

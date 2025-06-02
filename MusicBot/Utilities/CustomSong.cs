@@ -15,4 +15,6 @@ public class CustomSong(string url, string title, string? author, IReadOnlyList<
     public IReadOnlyList<Thumbnail> Thumbnails { get; } = thumbnails ??
     [new Thumbnail("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgv5PskaP6expiqdoE7maiCUWqc399A8jdvA&s",
         new Resolution(914,1000))];
+
+    public string? FormatType { get; set; }
 }

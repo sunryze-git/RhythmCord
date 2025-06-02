@@ -23,10 +23,11 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
             await ModifyResponseAsync(message => message.Content = "You are not in a voice channel.");
             return;
         }
-
-        var manager = GetManager();
+        
         try
         {
+            var manager = GetManager();
+            
             var song = await manager.AddToQueueAsync(query, insertNext, Context);
             var embed = new EmbedProperties
             {
@@ -42,7 +43,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
                 message.Embeds = [embed];
             });
         }
-        catch (SearchException e)
+        catch (Exception e)
         {
             var response = $"""
                             An error occurred while adding the song:

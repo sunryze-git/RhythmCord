@@ -20,4 +20,8 @@
     <PackageReference Include="YoutubeExplode" Version="6.5.4" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\CobaltApi\CobaltApi.csproj" />
+  </ItemGroup>
+
 </Project>
