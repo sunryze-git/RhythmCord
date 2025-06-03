@@ -28,7 +28,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
         {
             var manager = GetManager();
             
-            var song = await manager.AddToQueueAsync(query, insertNext, Context);
+            var song = await manager.PlaybackHandler.AddSongAsync(query, insertNext, Context);
             var embed = new EmbedProperties
             {
                 Title = "Added to Queue",
@@ -62,9 +62,9 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
             return;
         }
         var manager = GetManager();
-        if (manager.Active)
+        if (manager.PlaybackHandler.Active)
         {
-            manager.StopQueue();
+            manager.PlaybackHandler.Stop();
             await RespondAsync(InteractionCallback.Message("I have stopped the song and cleared the queue."));
         }
         else
@@ -83,9 +83,9 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
         }
         var manager = GetManager();
         
-        if (manager.Active)
+        if (manager.PlaybackHandler.Active)
         {
-            manager.SkipSong();
+            manager.PlaybackHandler.SkipSong();
             await RespondAsync(InteractionCallback.Message("Song has been skipped."));
         }
         else
@@ -102,9 +102,9 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
             await RespondAsync(InteractionCallback.Message("This command is not available."));
             return;
         }
-        var manager = GetManager();
-        await manager.LeaveVoiceAsync();
         await RespondAsync(InteractionCallback.Message("Bye! 👋"));
+        var manager = GetManager();
+        await manager.PlaybackHandler.End();
     }
     
     [SlashCommand("status", "Shows information about the current song.")]
@@ -117,7 +117,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
             return;
         }
         var manager = GetManager();
-        var song = manager.CurrentSong;
+        var song = manager.PlaybackHandler.CurrentSong;
 
         if (song == null)
         {
@@ -171,7 +171,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
             return;
         }
         var manager = GetManager();
-        var song = manager.CurrentSong;
+        var song = manager.PlaybackHandler.CurrentSong;
 
         if (song == null)
         {
@@ -179,7 +179,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
             return;
         }
 
-        var loopStatus = manager.LoopSong();
+        var loopStatus = manager.PlaybackHandler.ToggleLooping();
         await RespondAsync(InteractionCallback.Message(loopStatus
             ? $"Started looping {song.Title}"
             : $"Stopped looping {song.Title}"));
@@ -194,13 +194,13 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
             return;
         }
         var manager = GetManager();
-        if (manager.CurrentSong == null)
+        if (manager.PlaybackHandler.CurrentSong == null)
         {
             await RespondAsync(InteractionCallback.Message("No song is currently playing."));
             return;
         }
         
-        manager.Shuffle();
+        manager.PlaybackHandler.Shuffle();
         await RespondAsync(InteractionCallback.Message("Shuffled the queue."));
     }
     
@@ -213,7 +213,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
             return;
         }
         var manager = GetManager();
-        var songs = manager.SongQueue;
+        var songs = manager.PlaybackHandler.SongQueue;
 
         EmbedProperties embed;
         if (songs.Count == 0)

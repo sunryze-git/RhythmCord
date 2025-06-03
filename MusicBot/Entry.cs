@@ -1,6 +1,9 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MusicBot.Services;
+using MusicBot.Services.Audio;
+using MusicBot.Services.Media;
+using MusicBot.Services.Queue;
 using NetCord;
 using NetCord.Gateway;
 using NetCord.Services.ApplicationCommands;
@@ -64,8 +67,8 @@ public static class MusicBot
             .AddSingleton<GlobalMusicService>()
             .AddSingleton<SearchService>()
             .AddSingleton<YoutubeService>()
+            .AddSingleton<AudioService>()
             .AddTransient<GuildMusicService>()
-            .AddTransient<AudioService>()
             .BuildServiceProvider();
         
         // Initialize the application command service
