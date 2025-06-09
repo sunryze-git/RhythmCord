@@ -1,13 +1,12 @@
 using Microsoft.Extensions.Logging;
 using MusicBot.Exceptions;
-using MusicBot.Utilities;
 using YoutubeExplode;
 using YoutubeExplode.Common;
 using YoutubeExplode.Playlists;
 using YoutubeExplode.Videos;
 using YoutubeExplode.Videos.Streams;
 
-namespace MusicBot.Services;
+namespace MusicBot.Services.Media;
 
 public class YoutubeService(ILogger<YoutubeService> logger)
 {
