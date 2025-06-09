@@ -4,13 +4,12 @@ using FFMpegCore.Pipes;
 using Microsoft.Extensions.Logging;
 using NetCord.Gateway.Voice;
 
-namespace MusicBot.Services;
+namespace MusicBot.Services.Audio;
 
 public class AudioService(ILogger<AudioService> logger)
 {
     private const string AudioFormat = "s16le";     // Using S16LE
     private const string AudioCodec = "pcm_s16le";  // Standard Discord PCM format
-    private const int DiscordSampleRate = 48000;    // Standard Discord sample rate
     private const int DiscordChannels = 2;          // Standard Discord channels (stereo)
     
     internal bool Looping { get; set; }
@@ -72,7 +71,7 @@ public class AudioService(ILogger<AudioService> logger)
                 .OutputToPipe(new StreamPipeSink(outStream), addArguments: arguments => arguments
                     .WithAudioCodec(AudioCodec)
                     .ForceFormat(AudioFormat)
-                    .WithAudioSamplingRate(DiscordSampleRate)
+                    .WithAudioSamplingRate()
                     .WithCustomArgument($"-ac {DiscordChannels} -af volume=-10dB")
                     .WithFastStart())
                 .CancellableThrough(stopToken)
