@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MusicBot.Exceptions;
 using MusicBot.Services.Media;
@@ -115,12 +116,27 @@ public class PlaybackHandler(
     
     private void Dispose()
     {
-        _playbackTask?.Wait(); // Ensure playback task is completed before disposing
-        _playbackTask?.Dispose();
-        _stopRunnerCts?.Dispose();
-        _skipSongCts?.Dispose();
-        _inactivityCts?.Dispose();
-        _voiceClient?.Dispose();
+        try
+        {
+            _playbackTask?.Wait(); // Ensure playback task is completed before disposing
+            _playbackTask?.Dispose();
+            _stopRunnerCts?.Dispose();
+            _skipSongCts?.Dispose();
+            _inactivityCts?.Dispose();
+            _voiceClient?.Dispose();
+
+        }
+        catch (ObjectDisposedException ex)
+        {
+            logger.LogError(ex, "Disposing the playback handler failed.");
+        }
+        finally
+        {
+            // Tell the global manager to destroy this playback handler
+            var globalService = MusicBot.Services!.GetRequiredService<GlobalMusicService>();
+            globalService.CloseManager(_invokedGuild!.Id);
+            logger.LogInformation("Playback handler disposed and global manager notified.");
+        }
     }
     
     private async Task PlaybackRunner(VoiceClient voiceClient)
@@ -204,7 +220,7 @@ public class PlaybackHandler(
         
         // Start a task to clean up resources after playback ends
         await gatewayClient.UpdateVoiceStateAsync(new VoiceStateProperties(_invokedGuild!.Id, null));
-        await Task.Run(Dispose);
+        _ = Task.Run(Dispose);
     }
 
     private async Task PlaySong(OpusEncodeStream outStream)
