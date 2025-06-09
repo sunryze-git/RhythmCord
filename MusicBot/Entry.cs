@@ -2,8 +2,8 @@
 using Microsoft.Extensions.Logging;
 using MusicBot.Services;
 using MusicBot.Services.Audio;
+using MusicBot.Services.Interactions;
 using MusicBot.Services.Media;
-using MusicBot.Services.Queue;
 using NetCord;
 using NetCord.Gateway;
 using NetCord.Services.ApplicationCommands;
@@ -55,7 +55,10 @@ public static class MusicBot
         }
 
         // Startup the Client
-        var client = new GatewayClient(new BotToken(config.Token));
+        var client = new GatewayClient(new BotToken(config.Token), new GatewayClientConfiguration
+        {
+            Intents = GatewayIntents.AllNonPrivileged
+        });
         
         // Initialize the Service Collection, and load the client and application command service
         Services = new ServiceCollection()
@@ -91,7 +94,7 @@ public static class MusicBot
         await client.StartAsync();
         await Task.Delay(Timeout.Infinite);
     }
-
+    
     private static ValueTask DiscordClient_Log(LogMessage logMessage)
     {
         var logLevel = logMessage.Severity switch
