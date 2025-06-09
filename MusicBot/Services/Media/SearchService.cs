@@ -1,13 +1,13 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Net;
-using MusicBot.Parsers;
-using MusicBot.Utilities;
 using Microsoft.Extensions.Logging;
 using MusicBot.Exceptions;
+using MusicBot.Parsers;
+using MusicBot.Utilities;
 using Newtonsoft.Json;
 
-namespace MusicBot.Services;
+namespace MusicBot.Services.Media;
 
 // Provides methods to get information from search terms.
 public class SearchService
@@ -39,7 +39,7 @@ public class SearchService
             RedirectStandardError = true
         };
         _dlpProcess.EnableRaisingEvents = true;
-        _dlpProcess.Exited += (sender, args) =>
+        _dlpProcess.Exited += (_, _) =>
         {
             _logger.LogWarning("yt-dlp process exited with code {ExitCode}.", _dlpProcess.ExitCode);
             // YT-DLP Log
@@ -102,7 +102,7 @@ public class SearchService
         {
             _logger.LogError(ex, "yt-dlp JSON response was invalid.");
         }
-        catch (SearchException ex)
+        catch (SearchException)
         {
             throw; // pass this one up
         }
