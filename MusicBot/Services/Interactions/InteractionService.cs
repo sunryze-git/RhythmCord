@@ -4,7 +4,7 @@ using NetCord.Rest;
 using NetCord.Services;
 using NetCord.Services.ApplicationCommands;
 
-namespace MusicBot.Services;
+namespace MusicBot.Services.Interactions;
 
 public class InteractionService(
     ApplicationCommandService<ApplicationCommandContext> applicationCommandService, GatewayClient client)
@@ -23,6 +23,7 @@ public class InteractionService(
         // Return the error message to the user if the execution failed
         try
         {
+            Console.WriteLine($"Interaction failed: {failResult.Message}");
             await interaction.SendResponseAsync(InteractionCallback.Message(failResult.Message));
         }
         catch
