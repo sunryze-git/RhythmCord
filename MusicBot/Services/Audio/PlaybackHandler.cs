@@ -239,9 +239,6 @@ public class PlaybackHandler(
 
             await using var songStream = await mediaResolver.ResolveStreamAsync(next);
             await audioService.StartAudioStream(songStream, outStream, _skipSongCts.Token);
-            
-            // Remove the song from the queue after playback
-            queueManager.RemoveCurrent();
         }
         catch (OperationCanceledException)
         {
@@ -254,6 +251,12 @@ public class PlaybackHandler(
         catch (Exception ex)
         {
             logger.LogError(ex, "Unknown error occurred while playing song.");
+        }
+        finally
+        {
+            // BUGFIX: moved to finally statement to prevent infinite loops
+            // Remove the song from the queue after playback
+            queueManager.RemoveCurrent();
         }
     }
 }
