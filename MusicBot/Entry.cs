@@ -90,6 +90,16 @@ public static class MusicBot
             await client.CloseAsync();
         };
         
+        // Exception monitoring, logs all exceptions in the application (including handled ones)
+        AppDomain.CurrentDomain.FirstChanceException += async (sender, eventArgs) =>
+        {
+            var ex = eventArgs.Exception;
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffff");
+            var msg = $"[{timestamp}] Exception occurred:\n{ex}\n\n";
+            var fullPath = Path.Combine(Directory.GetCurrentDirectory(), "error.log");
+            await File.AppendAllTextAsync(fullPath, msg);
+        };
+        
         await applicationCommandService.CreateCommandsAsync(client.Rest, client.Id, true);
         await client.StartAsync();
         await Task.Delay(Timeout.Infinite);
