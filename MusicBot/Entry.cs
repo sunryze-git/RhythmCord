@@ -5,6 +5,8 @@ using MusicBot.Services;
 using MusicBot.Services.Audio;
 using MusicBot.Services.Interactions;
 using MusicBot.Services.Media;
+using MusicBot.Services.Utility;
+using MusicBot.Utilities;
 using NetCord;
 using NetCord.Gateway;
 using NetCord.Services.ApplicationCommands;
@@ -23,6 +25,8 @@ public static class MusicBot
         // Initialize Logger
         var loggerFactory = LoggerFactory.Create(builder =>
         {
+            builder.ClearProviders();
+            
             builder
                 .AddFilter("Microsoft", LogLevel.Warning)
                 .AddFilter("System", LogLevel.Warning)
@@ -74,10 +78,17 @@ public static class MusicBot
             .AddSingleton<GlobalMusicService>()
             .AddSingleton<SearchService>()
             .AddSingleton<YoutubeService>()
-            .AddSingleton<AudioServiceNative>()
-            .AddSingleton<AudioService>()
+            .AddSingleton<ResourceMonitorService>()
+            .AddSingleton<ConsoleInputService>()
+            .AddTransient<AudioServiceNative>()
             .AddTransient<GuildMusicService>()
             .BuildServiceProvider();
+        
+        var resourceMonitor = Services.GetRequiredService<ResourceMonitorService>();
+        var consoleInputService = Services.GetRequiredService<ConsoleInputService>();
+        
+        _ = resourceMonitor.StartAsync(CancellationToken.None);
+        _ = consoleInputService.StartAsync(CancellationToken.None);
         
         // Initialize the application command service
         var applicationCommandService = Services.GetRequiredService<ApplicationCommandService<ApplicationCommandContext>>();
