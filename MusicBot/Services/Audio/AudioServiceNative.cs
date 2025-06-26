@@ -9,7 +9,9 @@ namespace MusicBot.Services.Audio;
 public class AudioServiceNative(ILogger<AudioServiceNative> logger)
 {
     internal bool Looping { get; set; }
-    
+    internal TimeSpan CurrentSongLength { get; private set; }
+    internal TimeSpan CurrentSongPosition { get; private set; }
+
     internal async Task StartAudioStream(Stream inStream, OpusEncodeStream outStream, CancellationToken stopToken)
     {
         logger.LogInformation("Beginning native audio stream processing.");
@@ -49,7 +51,7 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
         }
     }
     
-    private static void ConvertToPcm(Stream inStream, Stream outStream, CancellationToken token)
+    private void ConvertToPcm(Stream inStream, Stream outStream, CancellationToken token)
     {
         // These two things fix problems where skipping / next songs end up starting a few seconds into the song
         
@@ -111,6 +113,20 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                 {
                     throw new ApplicationException("Failed to find stream information. The file may be corrupted.");
                 }
+                
+                // Set duration
+                try
+                {
+                    CurrentSongLength = TimeSpan.FromSeconds(formatCtx->duration / (double)ffmpeg.AV_TIME_BASE);
+                }
+                catch (OverflowException)
+                {
+                    CurrentSongLength = TimeSpan.MaxValue;
+                }
+                catch (ArgumentException)
+                {
+                    CurrentSongLength = TimeSpan.Zero;
+                }
 
                 // Find audio stream
                 var audioStreamIndex = -1;
@@ -146,6 +162,7 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                                         Channel Count: {codecPar->ch_layout.nb_channels}
                                         Sample Rate: {codecPar->sample_rate}
                                         Sample Format: {codecPar->format}
+                                        Duration: {CurrentSongLength:g}
                                    """);
 
                 swrCtx = ffmpeg.swr_alloc();
@@ -298,6 +315,21 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
 
                         Marshal.Copy((IntPtr)convertedData[0], managedBuffer, 0, outputBufferSize);
                         outStream.Write(managedBuffer, 0, outputBufferSize);
+                        
+                        // Update current song position
+                        try
+                        {
+                            var timeBase = formatCtx->streams[audioStreamIndex]->time_base;
+                            CurrentSongPosition = TimeSpan.FromSeconds(frame->pts * ffmpeg.av_q2d(timeBase));
+                        }
+                        catch (OverflowException)
+                        {
+                            CurrentSongPosition = TimeSpan.MaxValue; // Handle overflow gracefully
+                        }
+                        catch (ArgumentException)
+                        {
+                            CurrentSongPosition = TimeSpan.Zero;
+                        }
                     }
 
                     ffmpeg.av_packet_unref(packet);
