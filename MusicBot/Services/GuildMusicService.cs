@@ -14,7 +14,7 @@ public class GuildMusicService
 
     public GuildMusicService(
         ILoggerFactory loggerFactory,
-        AudioService audioService,
+        AudioServiceNative audioService,
         SearchService searchService,
         YoutubeService youtubeService,
         GatewayClient gatewayClient)
