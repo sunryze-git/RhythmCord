@@ -11,6 +11,9 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
     internal bool Looping { get; set; }
     internal TimeSpan CurrentSongLength { get; private set; }
     internal TimeSpan CurrentSongPosition { get; private set; }
+    
+    private static readonly unsafe avio_alloc_context_read_packet ReadPacketDelegate = ReadPacketCallback;
+    private readonly byte[] _reusableBuffer = new byte[192000];
 
     internal async Task StartAudioStream(Stream inStream, OpusEncodeStream outStream, CancellationToken stopToken)
     {
@@ -56,10 +59,7 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
         // These two things fix problems where skipping / next songs end up starting a few seconds into the song
         
         // Input stream MUST be at the start
-        if (inStream.CanSeek)
-        {
-            inStream.Position = 0;
-        }
+        if (inStream.CanSeek) inStream.Position = 0;
         
         // Output stream MUST be at the start and EMPTY
         if (outStream.CanSeek)
@@ -76,37 +76,42 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
             AVFrame* frame = null;
             AVPacket* packet = null;
             AVIOContext* avioCtx = null;
+            AVChannelLayout outLayout = default;
             byte** convertedData = null;
+            byte* buffer = null;
 
             var inHandle = GCHandle.Alloc(inStream);
-            byte* ioBuffer = null;
-
             try
             {
                 const int bufferSize = 4096;
-                var buffer = (byte*)ffmpeg.av_malloc(bufferSize);
+                buffer = (byte*)ffmpeg.av_malloc(bufferSize);
+                if (buffer == null)
+                    throw new OutOfMemoryException("Failed to allocate IO buffer.");
 
                 formatCtx = ffmpeg.avformat_alloc_context();
-
-                var readPacket = new avio_alloc_context_read_packet(ReadPacketCallback);
-                inHandle = GCHandle.Alloc(inStream);
+                if (formatCtx == null) 
+                    throw new OutOfMemoryException("Failed to allocate format context.");
 
                 avioCtx = ffmpeg.avio_alloc_context(
                     buffer,
                     bufferSize,
                     0,
                     (void*)GCHandle.ToIntPtr(inHandle),
-                    readPacket,
+                    ReadPacketDelegate,
                     null,
                     null);
+                if (avioCtx == null)
+                    throw new OutOfMemoryException("Failed to allocate AVIOContext.");
+
+                buffer = null; // Prevent double free
 
                 formatCtx->pb = avioCtx;
                 formatCtx->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO;
 
                 if (ffmpeg.avformat_open_input(&formatCtx, null, null, null) != 0)
                 {
-                    throw new ApplicationException(
-                        "Failed to open the input file. The file may be corrupted.");
+                    formatCtx = null;
+                    throw new ApplicationException("Failed to open the input file. The file may be corrupted.");
                 }
 
                 if (ffmpeg.avformat_find_stream_info(formatCtx, null) < 0)
@@ -114,20 +119,6 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                     throw new ApplicationException("Failed to find stream information. The file may be corrupted.");
                 }
                 
-                // Set duration
-                try
-                {
-                    CurrentSongLength = TimeSpan.FromSeconds(formatCtx->duration / (double)ffmpeg.AV_TIME_BASE);
-                }
-                catch (OverflowException)
-                {
-                    CurrentSongLength = TimeSpan.MaxValue;
-                }
-                catch (ArgumentException)
-                {
-                    CurrentSongLength = TimeSpan.Zero;
-                }
-
                 // Find audio stream
                 var audioStreamIndex = -1;
                 for (var i = 0; i < formatCtx->nb_streams; i++)
@@ -141,6 +132,40 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                 {
                     throw new ApplicationException("The given content has no audio track.");
                 }
+                
+                // Set duration
+                try
+                {
+                    if (formatCtx->duration != ffmpeg.AV_NOPTS_VALUE)
+                    {
+                        // Duration is available, convert it to TimeSpan
+                        CurrentSongLength = TimeSpan.FromSeconds(formatCtx->duration / (double)ffmpeg.AV_TIME_BASE);
+                    }
+                    else
+                    {
+                        var stream = formatCtx->streams[audioStreamIndex];
+                        if (stream->duration != ffmpeg.AV_NOPTS_VALUE)
+                        {
+                            // duration is in the stream
+                            var timeBase = stream->time_base;
+                            CurrentSongLength = TimeSpan.FromSeconds(stream->duration * ffmpeg.av_q2d(timeBase));
+                        }
+                        else
+                        {
+                            // No duration information available, set to zero
+                            logger.LogWarning("Audio stream does not contain duration information.");
+                            CurrentSongLength = TimeSpan.Zero;
+                        }
+                    }
+                }
+                catch (OverflowException)
+                {
+                    CurrentSongLength = TimeSpan.Zero;
+                }
+                catch (ArgumentException)
+                {
+                    CurrentSongLength = TimeSpan.Zero;
+                }
 
                 var codecPar = formatCtx->streams[audioStreamIndex]->codecpar;
                 var codec = ffmpeg.avcodec_find_decoder(codecPar->codec_id);
@@ -151,8 +176,10 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                 }
 
                 codecCtx = ffmpeg.avcodec_alloc_context3(codec);
-                ffmpeg.avcodec_parameters_to_context(codecCtx, codecPar);
-                ffmpeg.avcodec_open2(codecCtx, codec, null);
+                if (ffmpeg.avcodec_parameters_to_context(codecCtx, codecPar) < 0)
+                    throw new ApplicationException("Failed to copy codec parameters.");
+                if (ffmpeg.avcodec_open2(codecCtx, codec, null) < 0)
+                    throw new ApplicationException("Failed to open codec.");
 
                 // Print codec information
                 Console.WriteLine($"""
@@ -167,7 +194,7 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
 
                 swrCtx = ffmpeg.swr_alloc();
                 var inLayout = codecCtx->ch_layout;
-                AVChannelLayout outLayout = default;
+                
                 var stereoLayoutResult = ffmpeg.av_channel_layout_from_mask(&outLayout, ffmpeg.AV_CH_LAYOUT_STEREO);
                 if (stereoLayoutResult < 0)
                 {
@@ -193,7 +220,8 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                     throw new ApplicationException("Failed to allocate resample context.");
                 }
 
-                ffmpeg.swr_init(swrCtx);
+                if (ffmpeg.swr_init(swrCtx) < 0)
+                    throw new ApplicationException("Failed to initialize resampler.");
 
                 packet = ffmpeg.av_packet_alloc();
                 frame = ffmpeg.av_frame_alloc();
@@ -293,27 +321,40 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                             throw new ApplicationException("Failed to calculate output buffer size.");
 
                         token.ThrowIfCancellationRequested();
-                        var managedBuffer = new byte[outputBufferSize];
+                        byte[] managedBuffer;
+                        if (outputBufferSize <= _reusableBuffer.Length)
+                        {
+                            managedBuffer = _reusableBuffer;
+                        }
+                        else
+                        {
+                            logger.LogDebug("Buffer size exceeded reusable buffer, allocating new buffer of size {OutputBufferSize}.", outputBufferSize);
+                            managedBuffer = new byte[outputBufferSize];
+                        }
+                        
+                        Marshal.Copy((IntPtr)convertedData[0], managedBuffer, 0, outputBufferSize);
 
                         // Apply a volume adjustment
                         var sampleCount = outputBufferSize / 2;
-                        var samplePtr = (short*)convertedData[0];
-                        const float volumeFactor = 0.5f;
-                        for (var i = 0; i < sampleCount; i++)
+                        fixed (byte* bufferPtr = managedBuffer)
                         {
-                            var scaled = (int)(samplePtr[i] * volumeFactor);
-
-                            scaled = scaled switch
+                            var samplePtr = (short*)bufferPtr;
+                            const float volumeFactor = 0.5f;
+                            for (var i = 0; i < sampleCount; i++)
                             {
-                                // Clamp to 16-bit signed
-                                > short.MaxValue => short.MaxValue,
-                                < short.MinValue => short.MinValue,
-                                _ => scaled
-                            };
-                            samplePtr[i] = (short)scaled;
+                                var scaled = (int)(samplePtr[i] * volumeFactor);
+
+                                scaled = scaled switch
+                                {
+                                    // Clamp to 16-bit signed
+                                    > short.MaxValue => short.MaxValue,
+                                    < short.MinValue => short.MinValue,
+                                    _ => scaled
+                                };
+                                samplePtr[i] = (short)scaled;
+                            }
                         }
 
-                        Marshal.Copy((IntPtr)convertedData[0], managedBuffer, 0, outputBufferSize);
                         outStream.Write(managedBuffer, 0, outputBufferSize);
                         
                         // Update current song position
@@ -337,33 +378,38 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
             }
             catch (OperationCanceledException)
             {
-                // dont really need to do anything here for now
+                logger.LogDebug("Audio conversion was cancelled by request.");
+                throw;
             }
             finally
             {
+                ffmpeg.av_channel_layout_uninit(&outLayout);
+                
                 if (convertedData != null)
                 {
-                    ffmpeg.av_freep(&convertedData[0]);
+                    if (convertedData[0] != null)
+                        ffmpeg.av_freep(&convertedData[0]);
                     ffmpeg.av_freep(&convertedData);
                 }
 
-                ffmpeg.av_frame_free(&frame);
-                ffmpeg.av_packet_free(&packet);
-                ffmpeg.swr_free(&swrCtx);
-                ffmpeg.avcodec_free_context(&codecCtx);
-                ffmpeg.avformat_close_input(&formatCtx);
+                if (packet != null) ffmpeg.av_packet_free(&packet);
+                if (frame != null) ffmpeg.av_frame_free(&frame);
+                if (swrCtx != null) ffmpeg.swr_free(&swrCtx);
+                if (codecCtx != null) ffmpeg.avcodec_free_context(&codecCtx);
 
                 if (avioCtx != null)
                 {
-                    ffmpeg.av_freep(&avioCtx->buffer);
                     ffmpeg.avio_context_free(&avioCtx);
                 }
+                else if (buffer != null)
+                {
+                    ffmpeg.av_free(buffer);
+                }
+                
+                if (formatCtx != null) ffmpeg.avformat_close_input(&formatCtx);
 
                 if (inHandle.IsAllocated)
                     inHandle.Free();
-
-                if (ioBuffer != null)
-                    ffmpeg.av_free(ioBuffer);
 
                 Console.WriteLine("Audio stream processing completed and resources cleaned up.");
             }
@@ -389,9 +435,10 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
             Marshal.Copy(managedBuffer, 0, (IntPtr)buf, bytesRead);
             return bytesRead;
         }
-        catch
+        catch (Exception ex)
         {
-            return ffmpeg.AVERROR_EOF;
+            Console.WriteLine($"ReadPacket error: {ex.Message}");
+            return ffmpeg.AVERROR(ffmpeg.EINVAL);
         }
     }
 }
