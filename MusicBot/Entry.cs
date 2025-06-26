@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using FFmpeg.AutoGen;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MusicBot.Services;
 using MusicBot.Services.Audio;
@@ -60,6 +61,9 @@ public static class MusicBot
             Intents = GatewayIntents.AllNonPrivileged
         });
         
+        // Set audio client root libs
+        ffmpeg.RootPath = "/usr/lib";
+        
         // Initialize the Service Collection, and load the client and application command service
         Services = new ServiceCollection()
             .AddSingleton(loggerFactory)
@@ -70,6 +74,7 @@ public static class MusicBot
             .AddSingleton<GlobalMusicService>()
             .AddSingleton<SearchService>()
             .AddSingleton<YoutubeService>()
+            .AddSingleton<AudioServiceNative>()
             .AddSingleton<AudioService>()
             .AddTransient<GuildMusicService>()
             .BuildServiceProvider();
