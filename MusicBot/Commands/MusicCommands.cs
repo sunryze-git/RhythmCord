@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MusicBot.Exceptions;
 using MusicBot.Services;
+using MusicBot.Utilities;
 using NetCord;
 using NetCord.Gateway.Voice;
 using NetCord.Rest;
@@ -117,7 +118,8 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
             return;
         }
         var manager = GetManager();
-        var song = manager.PlaybackHandler.CurrentSong;
+        var playbackHandler = manager.PlaybackHandler;
+        var song = playbackHandler.CurrentSong;
 
         if (song == null)
         {
@@ -131,7 +133,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
                             **{video.Title}**
                             **{video.Author}**
 
-                            **Duration**: {video.Duration}
+                            **Playback**: {playbackHandler.Position.ToAdaptivePlaybackString()} / {playbackHandler.Duration.ToAdaptivePlaybackString()}
                             **Upload Date**: {video.UploadDate}
                             **[Listen]({video.Url})**
                             """,
@@ -139,7 +141,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
                   **{song.Title}**
                   **{song.Author}**
 
-                  **Duration**: {song.Duration}
+                  **Playback**: {playbackHandler.Position.ToAdaptivePlaybackString()} / {playbackHandler.Duration.ToAdaptivePlaybackString()}
                   **[Listen]({song.Url})**
                   """
         };
