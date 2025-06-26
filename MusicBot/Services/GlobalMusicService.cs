@@ -11,6 +11,8 @@ public class GlobalMusicService(ILogger<GlobalMusicService> logger, IServiceProv
 {
     private readonly ConcurrentDictionary<ulong, GuildMusicService> _managers = new();
 
+    public int NumberOfActiveManagers => _managers.Count;
+    
     public GuildMusicService GetOrCreateManager(ApplicationCommandContext context)
     {
         var guildId = context.Guild!.Id;
