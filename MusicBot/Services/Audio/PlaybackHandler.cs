@@ -14,7 +14,7 @@ namespace MusicBot.Services.Audio;
 
 public class PlaybackHandler(
     ILogger<PlaybackHandler> logger,
-    AudioService audioService,
+    AudioServiceNative audioService,
     QueueManager queueManager,
     MediaResolver mediaResolver,
     GatewayClient gatewayClient)
@@ -247,16 +247,41 @@ public class PlaybackHandler(
         catch (HttpRequestException ex)
         {
             logger.LogError(ex, "HTTP request failed while playing song.");
+            await TrySendMessageAsync("An HTTP error occurred while trying to play the song.");
+        }
+        catch (InvalidAudioException ex)
+        {
+            logger.LogError(ex, "Unsupported audio format encountered while playing song.");
+            await TrySendMessageAsync($"The audio format ``{ex.AudioFormat}`` is not supported.");
+        }
+        catch (ApplicationException ex)
+        {
+            logger.LogError(ex, "Application error occurred while playing song.");
+            await TrySendMessageAsync($"An error occurred during decoding:\n```{ex.Message}```");
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Unknown error occurred while playing song.");
+            await TrySendMessageAsync("An unknown error occurred while trying to play the song.");
         }
         finally
         {
             // BUGFIX: moved to finally statement to prevent infinite loops
             // Remove the song from the queue after playback
             queueManager.RemoveCurrent();
+        }
+    }
+    
+    private async Task TrySendMessageAsync(string message)
+    {
+        if (_invokedChannel == null) return;
+        try
+        {
+            await _invokedChannel.SendMessageAsync(message);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send message to channel {ChannelId}.", _invokedChannel.Id);
         }
     }
 }
