@@ -33,6 +33,8 @@ public class PlaybackHandler(
     public async Task End() => await EndPlaybackAsync();
     public ImmutableList<IVideo> SongQueue => queueManager.SongQueue;
     public IVideo? CurrentSong => queueManager.CurrentSong;
+    public TimeSpan Duration => audioService.CurrentSongLength;
+    public TimeSpan Position => audioService.CurrentSongPosition;
 
     public async Task<IVideo> AddSongAsync(string term, bool next, ApplicationCommandContext ctx)
     {
