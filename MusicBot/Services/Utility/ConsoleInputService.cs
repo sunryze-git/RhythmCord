@@ -27,7 +27,7 @@ public class ConsoleInputService(ILogger<ConsoleInputService> logger, ResourceMo
                                 break;
                             case 't':
                                 resourceMonitor.ToggleMonitoring();
-                                Console.WriteLine($"Auto-monitoring: {(resourceMonitor._isMonitoringEnabled ? "ON" : "OFF")}");
+                                Console.WriteLine($"Auto-monitoring: {(resourceMonitor.IsMonitoringEnabled ? "ON" : "OFF")}");
                                 break;
                             case 'h':
                                 PrintHelp();
