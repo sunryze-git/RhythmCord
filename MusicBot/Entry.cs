@@ -1,14 +1,15 @@
-﻿using CobaltApi;
+﻿using System.Runtime.ExceptionServices;
+using CobaltApi;
 using FFmpeg.AutoGen;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using MusicBot.Records;
 using MusicBot.Services;
 using MusicBot.Services.Audio;
 using MusicBot.Services.Interactions;
-using MusicBot.Services.Media;
+using MusicBot.Services.Media.Backends;
 using MusicBot.Services.Media.Resolvers;
 using MusicBot.Services.Utility;
-using MusicBot.Utilities;
 using NetCord;
 using NetCord.Gateway;
 using NetCord.Services.ApplicationCommands;
@@ -53,7 +54,7 @@ public static class MusicBot
             return;
         }
         
-        var config = JsonConvert.DeserializeObject<Parsers.Config>(await File.ReadAllTextAsync(ConfigPath));
+        var config = JsonConvert.DeserializeObject<Config>(await File.ReadAllTextAsync(ConfigPath));
         if (config is null || string.IsNullOrEmpty(config.Token))
         {
             _logger.LogCritical("The configuration file was invalid or did not contain a token.");
@@ -78,8 +79,8 @@ public static class MusicBot
             .AddSingleton<ApplicationCommandService<ApplicationCommandContext>>()
             .AddSingleton<InteractionService>()
             .AddSingleton<GlobalMusicService>()
-            .AddSingleton<SearchService>()
-            .AddSingleton<YoutubeService>()
+            .AddSingleton<DlpBackend>()
+            .AddSingleton<YoutubeBackend>()
             .AddSingleton<ResourceMonitorService>()
             .AddSingleton<ConsoleInputService>()
             .AddTransient<AudioServiceNative>()
@@ -87,6 +88,7 @@ public static class MusicBot
             .AddScoped<IMediaResolver, DirectFileResolver>()
             .AddScoped<IMediaResolver, YoutubeResolver>()
             .AddScoped<IMediaResolver, CobaltResolver>()
+            .AddScoped<IMediaResolver, YtdlpResolver>()
             .AddTransient<GuildMusicService>()
             .BuildServiceProvider();
         
@@ -103,31 +105,24 @@ public static class MusicBot
         // Initialize the interaction service
         var interactionService = Services.GetRequiredService<InteractionService>();
         
-        client.Log += DiscordClient_Log;
-        client.InteractionCreate += interactionService.OnClientOnInteractionCreate;
+        client.Log += DiscordClient_LogAsync;
+        client.InteractionCreate += interactionService.OnClientOnInteractionCreateAsync;
 
         // Log out when interrupted via keyboard
-        Console.CancelKeyPress += async delegate {
+        Console.CancelKeyPress += delegate {
             _logger.LogInformation("Logging out!");
-            await client.CloseAsync();
+            client.CloseAsync().Wait();
         };
         
         // Exception monitoring, logs all exceptions in the application (including handled ones)
-        AppDomain.CurrentDomain.FirstChanceException += async (sender, eventArgs) =>
-        {
-            var ex = eventArgs.Exception;
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffff");
-            var msg = $"[{timestamp}] Exception occurred:\n{ex}\n\n";
-            var fullPath = Path.Combine(Directory.GetCurrentDirectory(), "error.log");
-            await File.AppendAllTextAsync(fullPath, msg);
-        };
+        AppDomain.CurrentDomain.FirstChanceException += OnException;
         
         await applicationCommandService.CreateCommandsAsync(client.Rest, client.Id, true);
         await client.StartAsync();
         await Task.Delay(Timeout.Infinite);
     }
     
-    private static ValueTask DiscordClient_Log(LogMessage logMessage)
+    private static ValueTask DiscordClient_LogAsync(LogMessage logMessage)
     {
         var logLevel = logMessage.Severity switch
         {
@@ -138,5 +133,20 @@ public static class MusicBot
 
         _logger?.Log(logLevel, logMessage.Exception, "{Message}", logMessage.Message);
         return ValueTask.CompletedTask;
+    }
+    
+    private static void OnException(object? sender, FirstChanceExceptionEventArgs ex)
+    {
+        try
+        {
+            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.ffff");
+            var msg = $"[{timestamp}] Exception occurred:\n{ex.Exception}\n\n";
+            var fullPath = Path.Combine(Directory.GetCurrentDirectory(), "error.log");
+            File.AppendAllText(fullPath, msg);
+        }
+        catch
+        {
+            // If we fail to log the exception, we just ignore it.
+        }
     }
 }
