@@ -31,7 +31,7 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
     private readonly byte[] _reusableBuffer = new byte[192000];
     private static readonly ThreadLocal<byte[]> CallbackBuffer = new(() => new byte[65536]);
 
-    internal async Task StartAudioStream(Stream inStream, OpusEncodeStream outStream, CancellationToken stopToken)
+    internal async Task StartAudioStreamAsync(Stream inStream, OpusEncodeStream outStream, CancellationToken stopToken)
     {
         if (inStream == null)
         {

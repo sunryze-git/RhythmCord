@@ -1,9 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
-using MusicBot.Exceptions;
 using MusicBot.Services;
 using MusicBot.Utilities;
 using NetCord;
-using NetCord.Gateway.Voice;
 using NetCord.Rest;
 using NetCord.Services.ApplicationCommands;
 using YoutubeExplode.Videos;
@@ -13,7 +11,7 @@ namespace MusicBot.Commands;
 public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
 {
     [SlashCommand("play", "Play a song by URL, or by a search query.")]
-    public async Task Play(
+    public async Task PlayAsync(
         [SlashCommandParameter(Name = "query", Description = "URL or Search Query")] string query,
         [SlashCommandParameter(Name = "next", Description = "Insert as next in queue")] bool insertNext = false
     )
@@ -55,7 +53,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
     }
     
     [SlashCommand("stop", "Stops song playback, clears queue.")]
-    public async Task Stop()
+    public async Task StopAsync()
     {
         if (!CheckVoiceChannelStatus())
         {
@@ -75,7 +73,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
     }
     
     [SlashCommand("skip", "Skips the current song.")]
-    public async Task Skip()
+    public async Task SkipAsync()
     {
         if (!CheckVoiceChannelStatus())
         {
@@ -96,7 +94,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
     }
     
     [SlashCommand("leave", "Leaves the VC.")]
-    public async Task Leave()
+    public async Task LeaveAsync()
     { 
         if (!CheckVoiceChannelStatus())
         {
@@ -105,11 +103,11 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
         }
         await RespondAsync(InteractionCallback.Message("Bye! 👋"));
         var manager = GetManager();
-        await manager.PlaybackHandler.End();
+        await manager.PlaybackHandler.EndAsync();
     }
     
     [SlashCommand("status", "Shows information about the current song.")]
-    public async Task Status()
+    public async Task StatusAsync()
     {
         var ctx = Context;
         if (!CheckVoiceChannelStatus())
@@ -165,7 +163,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
     }
     
     [SlashCommand("loop", "Toggles looping the current playing song.")]
-    public async Task Loop()
+    public async Task LoopAsync()
     {
         if (!CheckVoiceChannelStatus())
         {
@@ -188,7 +186,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
     }
     
     [SlashCommand("shuffle", "Shuffles the current queue.")]
-    public async Task Shuffle()
+    public async Task ShuffleAsync()
     {
         if (!CheckVoiceChannelStatus())
         {
@@ -207,7 +205,7 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
     }
     
     [SlashCommand("queue", "Shows the current queue.")]
-    public async Task Queue()
+    public async Task QueueAsync()
     {
         if (!CheckVoiceChannelStatus())
         {

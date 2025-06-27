@@ -7,7 +7,7 @@ namespace MusicBot.Commands;
 public class BasicCommands : ApplicationCommandModule<ApplicationCommandContext>
 {
     [SlashCommand("test", "Test Command.")]
-    public async Task Test(
+    public async Task TestAsync(
         [SlashCommandParameter(Name = "number", Description = "What can I say?")] int number
     )
     {
@@ -16,7 +16,7 @@ public class BasicCommands : ApplicationCommandModule<ApplicationCommandContext>
     }
 
     [SlashCommand("embed", "Test Embed Command.")]
-    public async Task Embed()
+    public async Task EmbedAsync()
     {
         var embedProperties = new EmbedProperties
         {
@@ -40,7 +40,7 @@ public class BasicCommands : ApplicationCommandModule<ApplicationCommandContext>
     }
 
     [SlashCommand("defer", "Command that takes a while.")]
-    public async Task Defer()
+    public async Task DeferAsync()
     {
         var callback = InteractionCallback.DeferredMessage();
         await RespondAsync(callback);

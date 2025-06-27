@@ -9,7 +9,7 @@ namespace MusicBot.Services.Interactions;
 public class InteractionService(
     ApplicationCommandService<ApplicationCommandContext> applicationCommandService, GatewayClient client)
 {
-    internal async ValueTask OnClientOnInteractionCreate(Interaction interaction)
+    internal async ValueTask OnClientOnInteractionCreateAsync(Interaction interaction)
     {
         // Check if the interaction is an application command interaction
         if (interaction is not ApplicationCommandInteraction applicationCommandInteraction) return;

@@ -30,7 +30,7 @@ public class PlaybackHandler(
     }
     public void Shuffle() => queueManager.Shuffle();
     public void Stop() => StopQueue();
-    public async Task End() => await EndPlaybackAsync();
+    public async Task EndAsync() => await EndPlaybackAsync();
     public ImmutableList<IVideo> SongQueue => queueManager.SongQueue;
     public IVideo? CurrentSong => queueManager.CurrentSong;
     public TimeSpan Duration => audioService.CurrentSongLength;
@@ -85,7 +85,7 @@ public class PlaybackHandler(
         {
             if (_playbackTask == null || _playbackTask.IsCompleted)
             {
-                _playbackTask = Task.Run(() => PlaybackRunner(voiceClient));
+                _playbackTask = Task.Run(() => PlaybackRunnerAsync(voiceClient));
                 logger.LogInformation("Playback runner start initiated.");
             }
             else
@@ -146,7 +146,7 @@ public class PlaybackHandler(
         }
     }
     
-    private async Task PlaybackRunner(VoiceClient voiceClient)
+    private async Task PlaybackRunnerAsync(VoiceClient voiceClient)
     {
         try
         {
@@ -167,7 +167,7 @@ public class PlaybackHandler(
                 {
                     while (!queueManager.IsEmpty())
                     {
-                        await PlaySong(opusEncodeStream);
+                        await PlaySongAsync(opusEncodeStream);
                         if (_stopRunnerCts.IsCancellationRequested) break;
                     }
 
@@ -230,7 +230,7 @@ public class PlaybackHandler(
         _ = Task.Run(Dispose);
     }
 
-    private async Task PlaySong(OpusEncodeStream outStream)
+    private async Task PlaySongAsync(OpusEncodeStream outStream)
     {
         _skipSongCts?.Dispose();
         _skipSongCts = new CancellationTokenSource();
@@ -245,7 +245,7 @@ public class PlaybackHandler(
             }
 
             await using var songStream = await mediaResolver.ResolveStreamAsync(next);
-            await audioService.StartAudioStream(songStream, outStream, _skipSongCts.Token);
+            await audioService.StartAudioStreamAsync(songStream, outStream, _skipSongCts.Token);
         }
         catch (OperationCanceledException)
         {
