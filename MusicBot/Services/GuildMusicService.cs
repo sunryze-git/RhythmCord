@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using CobaltApi;
 using MusicBot.Services.Audio;
 using MusicBot.Services.Media;
+using MusicBot.Services.Media.Resolvers;
 using MusicBot.Services.Queue;
 using NetCord.Gateway;
 using NetCord.Services.ApplicationCommands;
@@ -15,19 +16,14 @@ public class GuildMusicService
     public GuildMusicService(
         ILoggerFactory loggerFactory,
         AudioServiceNative audioService,
-        SearchService searchService,
-        YoutubeService youtubeService,
+        IEnumerable<IMediaResolver> resolvers,
         GatewayClient gatewayClient)
     {
-        var cobaltClient = new CobaltClient("http://192.168.1.91:9000");
-        
         var queueManager = new QueueManager();
         
         var mediaResolver = new MediaResolver(
             loggerFactory.CreateLogger<MediaResolver>(),
-            searchService,
-            youtubeService,
-            cobaltClient);
+            resolvers);
         
         PlaybackHandler = new PlaybackHandler(
             loggerFactory.CreateLogger<PlaybackHandler>(),
