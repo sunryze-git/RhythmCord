@@ -1,104 +1,75 @@
 using Microsoft.Extensions.Logging;
-using YoutubeExplode.Common;
 using YoutubeExplode.Videos;
-using CobaltApi;
+using MusicBot.Services.Media.Resolvers;
 using MusicBot.Utilities;
 
 namespace MusicBot.Services.Media;
 
 public class MediaResolver(
     ILogger<MediaResolver> logger,
-    SearchService searchService,
-    YoutubeService youtubeService,
-    CobaltClient cobaltClient)
+    IEnumerable<IMediaResolver> resolvers)
 {
-    private static readonly string[] AudioFileTypes = [".mp3", ".wav", ".flac", ".ogg", ".opus"];
-
-    public async Task<Stream> ResolveStreamAsync(IVideo video)
-    {
-        if (video is CustomSong customSong)
-        {
-            return customSong.Source;
-        }
-
-        var request = new Request { url = video.Url, audioFormat = "best" };
-        var videoInfo = await cobaltClient.GetCobaltResponseAsync(request);
-        return await cobaltClient.GetTunnelStreamAsync(videoInfo);
-    }
+    private readonly IMediaResolver[] _resolvers = resolvers.OrderBy(r => r.Priority).ToArray();
 
     public async Task<IReadOnlyList<IVideo>> ResolveSongsAsync(string query)
-    { 
-        // Option 1: Search term is not a URL.
-        if (!Uri.IsWellFormedUriString(query, UriKind.Absolute))
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            throw new ArgumentException("Query cannot be null or empty", nameof(query));
+
+        logger.LogInformation("Resolving songs for query: {Query}", query);
+
+        // Try each resolver in priority order
+        foreach (var resolver in _resolvers)
         {
             try
             {
-                var video = await youtubeService.GetVideoAsync(query);
-                return video != null ? new List<IVideo> { video } : Array.Empty<IVideo>();
+                if (!await resolver.CanResolveAsync(query)) continue;
+                logger.LogDebug("Attempting resolution with {ResolverName}", resolver.Name);
+                var results = await resolver.ResolveAsync(query);
+
+                if (results.Count <= 0) continue;
+                logger.LogInformation("Successfully resolved {Count} videos using {ResolverName}", 
+                    results.Count, resolver.Name);
+                return results;
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "YouTube search failed.");
-                throw;
+                logger.LogWarning(ex, "Resolver {ResolverName} failed for query: {Query}", 
+                    resolver.Name, query);
+                // Continue to next resolver
             }
         }
-        var uri = new Uri(query);
-            
-        // Option 2: Search term is a direct URL.
-        if (IsAudioFile(uri))
-        {
-            var name = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
-            var stream = await searchService.GetStreamFromUri(uri);
-            return new List<IVideo> { new CustomSong(query, name, null, null, stream) };
-        }
-        
-        // Option 3: Attempt to get video from Cobalt API.
-        try
-        {
-            var request = new Request { url = uri.ToString(), audioFormat = "opus" };
-            var video = await cobaltClient.GetCobaltResponseAsync(request);
-            var stream = await cobaltClient.GetTunnelStreamAsync(video);
-            return new List<IVideo> { new CustomSong(query, video.Title, video.Artist, new List<Thumbnail> { new(string.Empty, new Resolution()) }, stream) };
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Cobalt API video retrieval failed.");
-        }
-        
-        // Option 4: Attempt search with YouTubeExplode.
-        if (uri.Authority.EndsWith("youtube.com", StringComparison.InvariantCulture))
-        {
-            if (uri.AbsolutePath == "/playlist")
-            {
-                var playlist = await youtubeService.GetPlaylistVideosAsync(uri.AbsoluteUri);
-                return playlist.Count == 0 ? Array.Empty<IVideo>() : playlist;
-            }
 
-            var video = await youtubeService.GetVideoAsync(uri.AbsoluteUri);
-            return video == null ? Array.Empty<IVideo>() : new List<IVideo> { video };
-        }
-        
-        // Option 5: Attempt search with YT-DLP.
-        logger.LogInformation("Querying song data via yt-dlp.");
-        var metadata = await searchService.GetMetadataAsync(query);
-        if (metadata.Any())
-            return metadata;
-        
-        // If we reach here, no valid song was found.
-        logger.LogWarning("No valid song found for the given term.");
+        logger.LogWarning("No resolver could handle query: {Query}", query);
         return [];
     }
-
-    private static bool IsAudioFile(Uri url)
+    
+    public async Task<Stream> ResolveStreamAsync(IVideo video)
     {
-        try
+        // If a CustomSong, we already have the stream
+        if (video is CustomSong customSong)
         {
-            var ext = Path.GetExtension(url.LocalPath).ToLowerInvariant();
-            return Array.Exists(AudioFileTypes, x => x == ext);
+            if (customSong.Source.CanSeek)
+                customSong.Source.Position = 0;
+            return customSong.Source;
         }
-        catch (UriFormatException)
+        
+        // Try the resolvers that can provide streams
+        foreach (var resolver in _resolvers)
         {
-            return false;
+            try
+            {
+                return await resolver.GetStreamAsync(video);
+            }
+            catch (NotSupportedException)
+            {
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Stream resolution failed with {ResolverName}", resolver.Name);
+            }
         }
+
+        throw new NotSupportedException($"No resolver could provide stream for video: {video.Title}");
     }
 }
