@@ -1,10 +1,12 @@
-﻿using FFmpeg.AutoGen;
+﻿using CobaltApi;
+using FFmpeg.AutoGen;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MusicBot.Services;
 using MusicBot.Services.Audio;
 using MusicBot.Services.Interactions;
 using MusicBot.Services.Media;
+using MusicBot.Services.Media.Resolvers;
 using MusicBot.Services.Utility;
 using MusicBot.Utilities;
 using NetCord;
@@ -81,6 +83,10 @@ public static class MusicBot
             .AddSingleton<ResourceMonitorService>()
             .AddSingleton<ConsoleInputService>()
             .AddTransient<AudioServiceNative>()
+            .AddSingleton(_ => new CobaltClient("http://192.168.1.91:9000"))
+            .AddScoped<IMediaResolver, DirectFileResolver>()
+            .AddScoped<IMediaResolver, YoutubeResolver>()
+            .AddScoped<IMediaResolver, CobaltResolver>()
             .AddTransient<GuildMusicService>()
             .BuildServiceProvider();
         
