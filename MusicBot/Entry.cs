@@ -70,11 +70,14 @@ public static class MusicBot
         
         // Set audio client root libs
         ffmpeg.RootPath = "/usr/lib";
+
+        var commonHttpClient = new HttpClient();
         
         // Initialize the Service Collection, and load the client and application command service
         Services = new ServiceCollection()
             .AddSingleton(loggerFactory)
             .AddSingleton(client)
+            .AddSingleton(commonHttpClient)
             .AddLogging()
             .AddSingleton<ApplicationCommandService<ApplicationCommandContext>>()
             .AddSingleton<InteractionService>()
@@ -89,6 +92,7 @@ public static class MusicBot
             .AddScoped<IMediaResolver, YoutubeResolver>()
             .AddScoped<IMediaResolver, CobaltResolver>()
             .AddScoped<IMediaResolver, YtdlpResolver>()
+            .AddScoped<IMediaResolver, SoundcloudResolver>()
             .AddTransient<GuildMusicService>()
             .BuildServiceProvider();
         
