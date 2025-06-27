@@ -22,6 +22,11 @@ public class GlobalMusicService(ILogger<GlobalMusicService> logger, IServiceProv
         logger.LogInformation("{GuildId} Guild music manager is ready.", guildId);
         return manager;
     }
+    
+    public IEnumerable<GuildMusicService> GetActiveManagers()
+    {
+        return _managers.Values;
+    }
 
     public void CloseManager(ulong guildId)
     {
