@@ -67,34 +67,4 @@ public class YoutubeService(ILogger<YoutubeService> logger)
             return []; // Return empty list on failure
         }
     }
-
-    internal async Task<Stream?> GetAudioStreamAsync(IVideo video)
-    {
-        logger.LogInformation("Getting Opus audio stream for video: {VideoTitle}", video.Title);
-        try
-        {
-            var streamManifest = await _client.Videos.Streams.GetManifestAsync(video.Id);
-
-            var streamInfo = streamManifest
-                .GetAudioOnlyStreams()
-                .Where(s => s.AudioCodec.Equals("opus", StringComparison.OrdinalIgnoreCase)) // Hardcoded to opus
-                .TryGetWithHighestBitrate();
-
-            if (streamInfo == null)
-            {
-                logger.LogWarning("Could not find an Opus audio stream for video {VideoTitle}. Available codecs: {Codecs}",
-                    video.Title,
-                    string.Join(", ", streamManifest.GetAudioOnlyStreams().Select(s => s.AudioCodec).Distinct()));
-                return null; // Indicate failure
-            }
-
-            logger.LogInformation("Found Opus audio stream: Bitrate={Bitrate}", streamInfo.Bitrate);
-            return await _client.Videos.Streams.GetAsync(streamInfo);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to get audio stream for video: {VideoTitle}", video.Title);
-            throw new SearchException(ex.Message);
-        }
-    }
 }
