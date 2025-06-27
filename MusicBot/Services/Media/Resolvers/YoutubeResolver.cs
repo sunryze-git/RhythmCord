@@ -1,9 +1,10 @@
 using Microsoft.Extensions.Logging;
+using MusicBot.Services.Media.Backends;
 using YoutubeExplode.Videos;
 
 namespace MusicBot.Services.Media.Resolvers;
 
-public class YoutubeResolver(YoutubeService youtubeService, ILogger<YoutubeResolver> logger) : IMediaResolver
+public class YoutubeResolver(YoutubeBackend youtubeBackend, ILogger<YoutubeResolver> logger) : IMediaResolver
 {
     public string Name => "YouTubeExplode";
     public int Priority => 2;
@@ -33,18 +34,18 @@ public class YoutubeResolver(YoutubeService youtubeService, ILogger<YoutubeResol
                 if (IsPlaylistUrl(uri))
                 {
                     logger.LogInformation("Resolving YouTube playlist: {PlaylistUrl}", uri);
-                    var playlist = await youtubeService.GetPlaylistVideosAsync(uri.AbsoluteUri);
+                    var playlist = await youtubeBackend.GetPlaylistVideosAsync(uri.AbsoluteUri);
                     return playlist.Count == 0 ? Array.Empty<IVideo>() : playlist;
                 }
 
                 logger.LogInformation("Resolving YouTube video: {VideoUrl}", uri);
-                var video = await youtubeService.GetVideoAsync(uri.AbsoluteUri);
+                var video = await youtubeBackend.GetVideoAsync(uri.AbsoluteUri);
                 return video == null ? Array.Empty<IVideo>() : new List<IVideo> { video };
             }
 
             // Handle search query
             logger.LogInformation("Searching YouTube for: {Query}", query);
-            var searchResult = await youtubeService.GetVideoAsync(query);
+            var searchResult = await youtubeBackend.GetVideoAsync(query);
             return searchResult == null ? Array.Empty<IVideo>() : new List<IVideo> { searchResult };
         }
         catch (Exception ex)

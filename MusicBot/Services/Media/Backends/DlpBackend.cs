@@ -3,20 +3,20 @@ using System.Diagnostics;
 using System.Net;
 using Microsoft.Extensions.Logging;
 using MusicBot.Exceptions;
-using MusicBot.Parsers;
+using MusicBot.Records;
 using MusicBot.Utilities;
 using Newtonsoft.Json;
 
-namespace MusicBot.Services.Media;
+namespace MusicBot.Services.Media.Backends;
 
 // Provides methods to get information from search terms.
-public class SearchService
+public class DlpBackend
 {
     private readonly HttpClient _httpClient;
     private readonly Process _dlpProcess = new();
-    private readonly ILogger<SearchService> _logger;
+    private readonly ILogger<DlpBackend> _logger;
 
-    public SearchService(ILogger<SearchService> logger)
+    public DlpBackend(ILogger<DlpBackend> logger)
     {
         // Initializing the process here with its start info can save 
         // a very small amount of time, but its a good optimization strategy
@@ -120,7 +120,7 @@ public class SearchService
         return GetDlpOutputStream(argument);
     }
 
-    internal async Task<Stream> GetStreamFromUri(Uri url)
+    internal async Task<Stream> GetStreamFromUriAsync(Uri url)
     {
         return await _httpClient.GetStreamAsync(url);
     }

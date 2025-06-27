@@ -1,6 +1,6 @@
 using Newtonsoft.Json;
 
-namespace MusicBot.Parsers;
+namespace MusicBot.Records;
 
 public record Config(
     [property: JsonProperty("token")] string Token

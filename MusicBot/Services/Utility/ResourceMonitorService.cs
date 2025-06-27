@@ -51,7 +51,7 @@ public class ResourceMonitorService(ILogger<ResourceMonitorService> logger, ISer
 
             Console.WriteLine($"""
                                ═══════════════════════════════════════
-                               RESOURCE USAGE - {DateTime.Now:HH:mm:ss}
+                               RESOURCE USAGE - {DateTime.UtcNow:HH:mm:ss}
                                ═══════════════════════════════════════
                                Memory Usage:
                                     GC Memory:      {gcMemory:N0} MB

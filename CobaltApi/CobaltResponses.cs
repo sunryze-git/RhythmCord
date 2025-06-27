@@ -1,6 +1,6 @@
 using Newtonsoft.Json;
 
-namespace CobaltApi.Records;
+namespace CobaltApi;
 
 // GET Records
 public record InfoResponse(

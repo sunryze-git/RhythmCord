@@ -1,10 +1,10 @@
-using Microsoft.Extensions.Logging;
+using MusicBot.Services.Media.Backends;
 using MusicBot.Utilities;
 using YoutubeExplode.Videos;
 
 namespace MusicBot.Services.Media.Resolvers;
 
-public class DirectFileResolver(SearchService searchService, ILogger<DirectFileResolver> logger) : IMediaResolver
+public class DirectFileResolver(DlpBackend dlpBackend) : IMediaResolver
 {
     private static readonly HashSet<string> AudioFileTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -34,7 +34,7 @@ public class DirectFileResolver(SearchService searchService, ILogger<DirectFileR
     {
         var uri = new Uri(query);
         var name = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
-        var stream = await searchService.GetStreamFromUri(uri);
+        var stream = await dlpBackend.GetStreamFromUriAsync(uri);
         
         return new List<IVideo> 
         { 
