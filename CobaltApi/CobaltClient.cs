@@ -1,5 +1,4 @@
 using System.Net.Http.Headers;
-using CobaltApi.Records;
 using Newtonsoft.Json;
 
 namespace CobaltApi;

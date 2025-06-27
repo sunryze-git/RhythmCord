@@ -1,13 +1,11 @@
 using System.Collections.Concurrent;
-using System.Reflection.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using NetCord.Gateway;
 using NetCord.Services.ApplicationCommands;
 
 namespace MusicBot.Services;
 
-public class GlobalMusicService(ILogger<GlobalMusicService> logger, IServiceProvider serviceProvider, GatewayClient gatewayClient)
+public class GlobalMusicService(ILogger<GlobalMusicService> logger, IServiceProvider serviceProvider)
 {
     private readonly ConcurrentDictionary<ulong, GuildMusicService> _managers = new();
 

@@ -1,11 +1,9 @@
 using Microsoft.Extensions.Logging;
-using CobaltApi;
 using MusicBot.Services.Audio;
 using MusicBot.Services.Media;
 using MusicBot.Services.Media.Resolvers;
 using MusicBot.Services.Queue;
 using NetCord.Gateway;
-using NetCord.Services.ApplicationCommands;
 
 namespace MusicBot.Services;
 
