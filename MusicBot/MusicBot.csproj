@@ -10,13 +10,27 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Asyncify" Version="0.9.7" />
+    <PackageReference Include="DisableDateTimeNow" Version="1.0.5883.39470" />
     <PackageReference Include="FFmpeg.AutoGen" Version="7.1.1" />
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="9.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.3" />
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="17.14.15">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="NetCord" Version="1.0.0-alpha.364" />
     <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.364" />
     <PackageReference Include="NetCord.Hosting.Services" Version="1.0.0-alpha.364" />
     <PackageReference Include="NetCord.Services" Version="1.0.0-alpha.364" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="SecurityCodeScan.VS2019" Version="5.6.7">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="YoutubeExplode" Version="6.5.4" />
   </ItemGroup>
 
