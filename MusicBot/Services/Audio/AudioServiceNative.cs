@@ -9,14 +9,45 @@ namespace MusicBot.Services.Audio;
 public class AudioServiceNative(ILogger<AudioServiceNative> logger)
 {
     internal bool Looping { get; set; }
-    internal TimeSpan CurrentSongLength { get; private set; }
-    internal TimeSpan CurrentSongPosition { get; private set; }
+    private readonly Lock _positionLock = new();
+    private TimeSpan _currentSongLength;
+    private TimeSpan _currentSongPosition;
+    
+    internal float Volume { get; set; } = 0.5f;
+
+    internal TimeSpan CurrentSongLength 
+    { 
+        get { lock (_positionLock) return _currentSongLength; }
+        private set { lock (_positionLock) _currentSongLength = value; }
+    }
+
+    internal TimeSpan CurrentSongPosition 
+    { 
+        get { lock (_positionLock) return _currentSongPosition; }
+        private set { lock (_positionLock) _currentSongPosition = value; }
+    }
     
     private static readonly unsafe avio_alloc_context_read_packet ReadPacketDelegate = ReadPacketCallback;
     private readonly byte[] _reusableBuffer = new byte[192000];
+    private static readonly ThreadLocal<byte[]> CallbackBuffer = new(() => new byte[65536]);
 
     internal async Task StartAudioStream(Stream inStream, OpusEncodeStream outStream, CancellationToken stopToken)
     {
+        if (inStream == null)
+        {
+            throw new ArgumentNullException(nameof(inStream), "Input stream cannot be null.");
+        }
+        
+        if (outStream == null)
+        {
+            throw new ArgumentNullException(nameof(outStream), "Output stream cannot be null.");
+        }
+        
+        if (!inStream.CanRead)
+        {
+            throw new ArgumentException("Input stream must be readable.", nameof(inStream));
+        }
+        
         logger.LogInformation("Beginning native audio stream processing.");
         var loopCount = 0;
         try
@@ -339,7 +370,7 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                         fixed (byte* bufferPtr = managedBuffer)
                         {
                             var samplePtr = (short*)bufferPtr;
-                            const float volumeFactor = 0.5f;
+                            var volumeFactor = Volume;
                             for (var i = 0; i < sampleCount; i++)
                             {
                                 var scaled = (int)(samplePtr[i] * volumeFactor);
@@ -420,24 +451,31 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
     {
         try
         {
-            if (GCHandle.FromIntPtr((IntPtr)opaque).Target is not Stream inStream)
-            {
+            var handle = GCHandle.FromIntPtr((IntPtr)opaque);
+            if (!handle.IsAllocated || handle.Target is not Stream inStream)
                 return ffmpeg.AVERROR(ffmpeg.EINVAL);
+
+            var buffer = CallbackBuffer.Value;
+            if (buffer?.Length < bufSize)
+            {
+                buffer = new byte[Math.Max(bufSize, 65536)];
+                CallbackBuffer.Value = buffer;
             }
 
-            var managedBuffer = new byte[bufSize];
-            var bytesRead = inStream.Read(managedBuffer, 0, bufSize);
+            var bytesRead = inStream.Read(buffer!, 0, bufSize);
             if (bytesRead == 0)
-            {
-                return ffmpeg.AVERROR_EOF; // End of stream
-            }
-            
-            Marshal.Copy(managedBuffer, 0, (IntPtr)buf, bytesRead);
+                return ffmpeg.AVERROR_EOF;
+
+            Marshal.Copy(buffer!, 0, (IntPtr)buf, bytesRead);
             return bytesRead;
+        }
+        catch (ObjectDisposedException)
+        {
+            return ffmpeg.AVERROR_EOF;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"ReadPacket error: {ex.Message}");
+            Console.WriteLine($"Error in ReadPacketCallback: {ex.Message}");
             return ffmpeg.AVERROR(ffmpeg.EINVAL);
         }
     }
