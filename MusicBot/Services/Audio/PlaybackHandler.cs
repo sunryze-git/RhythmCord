@@ -74,19 +74,24 @@ public class PlaybackHandler(
     private Guild? _invokedGuild;
     private TextChannel? _invokedChannel;
     private VoiceClient? _voiceClient;
+    private readonly Lock _playbackLock = new();
     
     private void StartQueue(VoiceClient voiceClient)
     {
         logger.LogInformation("Beginning playback of queue.");
         _inactivityCts?.Cancel();
-        if (_playbackTask == null)
+
+        lock (_playbackLock)
         {
-            _playbackTask = Task.Run(() => PlaybackRunner(voiceClient));
-            logger.LogInformation("Playback runner start initiated.");
-        }
-        else
-        {
-            logger.LogInformation("Playback task already running.");
+            if (_playbackTask == null || _playbackTask.IsCompleted)
+            {
+                _playbackTask = Task.Run(() => PlaybackRunner(voiceClient));
+                logger.LogInformation("Playback runner start initiated.");
+            }
+            else
+            {
+                logger.LogInformation("Playback task already running.");
+            }
         }
     }
 
@@ -108,7 +113,7 @@ public class PlaybackHandler(
             await _inactivityCts!.CancelAsync(); // 4. cancel inactivity, if that's where we are
             
             // Dispose will be called somewhere before this
-            await _playbackTask!.WaitAsync(TimeSpan.FromMinutes(1)); // 4. wait for playback task to finish
+            await _playbackTask!.WaitAsync(TimeSpan.FromSeconds(10)); // 4. wait for playback task to finish
         }
         catch (ObjectDisposedException ex)
         {
