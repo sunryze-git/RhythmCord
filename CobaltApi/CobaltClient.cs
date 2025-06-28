@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using Newtonsoft.Json;
+using System.Net.Http;
 
 namespace CobaltApi;
 
@@ -39,10 +40,16 @@ public class CobaltClient(string instanceUrl)
     {
         var tunnelUrl = video.Tunnel.FirstOrDefault();
         if (tunnelUrl == null) throw new InvalidOperationException("No tunnel URL found in VideoResponse.");
-        var tunnelResponse = await _client.GetAsync(new Uri(tunnelUrl).PathAndQuery);
-        tunnelResponse.EnsureSuccessStatusCode();
-        var stream = await tunnelResponse.Content.ReadAsStreamAsync();
-        stream.Position = 0;
+        // Use SendAsync with HttpCompletionOption.ResponseHeadersReceived to prevent buffering
+        var request = new HttpRequestMessage(HttpMethod.Get, new Uri(tunnelUrl).PathAndQuery);
+        var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+
+        var stream = await response.Content.ReadAsStreamAsync();
+    
+        Console.WriteLine($"[HTTP] Stream type: {stream.GetType().Name}");
+        Console.WriteLine($"[HTTP] Content-Length: {response.Content.Headers.ContentLength?.ToString() ?? "Unknown"}");
+
         return stream;
     }
     
