@@ -108,6 +108,12 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
             {
                 _playbackStartTime = DateTime.UtcNow;
                 _totalFrameDuration = TimeSpan.Zero;
+                
+                // Settings
+                AVDictionary* opts = null;
+                ffmpeg.av_dict_set(&opts, "probesize", "32", 0);
+                ffmpeg.av_dict_set(&opts, "analyzeduration", "1000000", 0);
+                ffmpeg.av_dict_set(&opts, "err_detect", "ignore_err", 0);
 
                 const int bufferSize = 4096;
                 buffer = (byte*)ffmpeg.av_malloc(bufferSize);
@@ -132,9 +138,10 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                 buffer = null; // Prevent double free
 
                 formatCtx->pb = avioCtx;
-                formatCtx->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO;
+                formatCtx->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO | ffmpeg.AVFMT_FLAG_NOBUFFER;
+                formatCtx->error_recognition = 0;
 
-                res = ffmpeg.avformat_open_input(&formatCtx, null, null, null);
+                res = ffmpeg.avformat_open_input(&formatCtx, null, null, &opts);
                 if (res != 0)
                 {
                     formatCtx = null;
