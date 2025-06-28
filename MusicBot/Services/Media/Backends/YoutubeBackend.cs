@@ -32,14 +32,14 @@ public class YoutubeBackend(ILogger<YoutubeBackend> logger)
         logger.LogInformation("Input is not a direct video ID/URL. Performing search.");
         try
         {
-            // Simplify search: take the first result
-            var videos = await _client.Search.GetVideosAsync(queryOrUrl);
-            var searchResult = videos.FirstOrDefault();
-            if (searchResult == null)
+            // Get the first result from the async enumerable without LINQ
+            await using var enumerator = _client.Search.GetVideosAsync(queryOrUrl).GetAsyncEnumerator();
+            if (!await enumerator.MoveNextAsync())
             {
                 logger.LogWarning("Search for '{QueryOrUrl}' returned no results.", queryOrUrl);
                 return null;
             }
+            var searchResult = enumerator.Current;
             logger.LogInformation("Search for '{QueryOrUrl}' found video: {Title}", queryOrUrl, searchResult.Title);
             // Fetch full metadata using the ID from the search result
             return await _client.Videos.GetAsync(searchResult.Id);
