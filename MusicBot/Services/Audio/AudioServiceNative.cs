@@ -28,6 +28,7 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
     }
     
     private static readonly unsafe avio_alloc_context_read_packet ReadPacketDelegate = ReadPacketCallback;
+    
     private readonly byte[] _reusableBuffer = new byte[192000];
     private static readonly ThreadLocal<byte[]> CallbackBuffer = new(() => new byte[65536]);
 
@@ -87,18 +88,6 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
     
     private void ConvertToPcm(Stream inStream, Stream outStream, CancellationToken token)
     {
-        // These two things fix problems where skipping / next songs end up starting a few seconds into the song
-        
-        // Input stream MUST be at the start
-        if (inStream.CanSeek) inStream.Position = 0;
-        
-        // Output stream MUST be at the start and EMPTY
-        if (outStream.CanSeek)
-        {
-            outStream.SetLength(0);
-            outStream.Position = 0;
-        }
-        
         unsafe
         {
             AVFormatContext* formatCtx = null;
@@ -135,19 +124,21 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                     throw new OutOfMemoryException("Failed to allocate AVIOContext.");
 
                 buffer = null; // Prevent double free
-
+                
                 formatCtx->pb = avioCtx;
                 formatCtx->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO;
 
                 if (ffmpeg.avformat_open_input(&formatCtx, null, null, null) != 0)
                 {
                     formatCtx = null;
-                    throw new ApplicationException("Failed to open the input file. The file may be corrupted.");
+                    var errorMsg = GetFFmpegErrorString(ffmpeg.AVERROR(ffmpeg.EINVAL));
+                    throw new ApplicationException($"Failed to open input stream: {errorMsg}");
                 }
 
                 if (ffmpeg.avformat_find_stream_info(formatCtx, null) < 0)
                 {
-                    throw new ApplicationException("Failed to find stream information. The file may be corrupted.");
+                    var errorMsg = GetFFmpegErrorString(ffmpeg.AVERROR(ffmpeg.EINVAL));
+                    throw new ApplicationException($"Failed to analyze stream information: {errorMsg}");
                 }
                 
                 // Find audio stream
@@ -203,14 +194,17 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                 if (codec == null)
                 {
                     throw new InvalidAudioException(
-                        "Unsupported audio codec.", ffmpeg.avcodec_get_name(codecPar->codec_id));
+                        "Unsupported audio codec.",codecPar->codec_id.ToString());
                 }
 
                 codecCtx = ffmpeg.avcodec_alloc_context3(codec);
                 if (ffmpeg.avcodec_parameters_to_context(codecCtx, codecPar) < 0)
                     throw new ApplicationException("Failed to copy codec parameters.");
                 if (ffmpeg.avcodec_open2(codecCtx, codec, null) < 0)
-                    throw new ApplicationException("Failed to open codec.");
+                {
+                    throw new InvalidAudioException(
+                        "Failed to open codec.", codecPar->codec_id.ToString());
+                }
 
                 // Print codec information
                 Console.WriteLine($"""
@@ -276,7 +270,9 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                     ffmpeg.av_packet_unref(packet);
                     if (sendResult < 0)
                     {
-                        throw new ApplicationException("Corrupted or invalid data when attempting to send packet.");
+                        var errorMsg = GetFFmpegErrorString(sendResult);
+                        throw new ApplicationException(
+                            $"Audio decoding failed: {errorMsg}");
                     }
                     
                     while (true)
@@ -286,7 +282,9 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                             break;
                         if (receiveResult < 0) 
                         {
-                            throw new ApplicationException("Error receiving frame from codec.");
+                            var errorMsg = GetFFmpegErrorString(receiveResult);
+                            throw new ApplicationException(
+                                $"Failed to receive frame from decoder: {errorMsg}");
                         }
                         
                         token.ThrowIfCancellationRequested();
@@ -441,10 +439,25 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
 
                 if (inHandle.IsAllocated)
                     inHandle.Free();
+                
+                inStream.Dispose(); // hopefully this fixes the problems.
+
+                CurrentSongLength = TimeSpan.Zero;
+                CurrentSongPosition = TimeSpan.Zero;
 
                 Console.WriteLine("Audio stream processing completed and resources cleaned up.");
             }
         }
+    }
+
+    private static unsafe string GetFFmpegErrorString(int averror)
+    {
+        var buffer = stackalloc byte[256];
+        if (ffmpeg.av_strerror(averror, buffer, 256) < 0)
+        {
+            return $"Unknown error code: {averror}";
+        }
+        return Marshal.PtrToStringAnsi((IntPtr)buffer) ?? $"Unknown error code: {averror}";
     }
 
     private static unsafe int ReadPacketCallback(void* opaque, byte* buf, int bufSize)
@@ -463,6 +476,7 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
             }
 
             var bytesRead = inStream.Read(buffer!, 0, bufSize);
+
             if (bytesRead == 0)
                 return ffmpeg.AVERROR_EOF;
 
@@ -475,7 +489,7 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error in ReadPacketCallback: {ex.Message}");
+            Console.WriteLine($"[ERROR] ReadPacketCallback: {ex.Message}");
             return ffmpeg.AVERROR(ffmpeg.EINVAL);
         }
     }
