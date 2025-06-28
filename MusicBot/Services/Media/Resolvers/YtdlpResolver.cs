@@ -6,7 +6,7 @@ namespace MusicBot.Services.Media.Resolvers;
 public class YtdlpResolver(DlpBackend dlpService) : IMediaResolver
 {
     public string Name => "YT-DLP";
-    public int Priority => 3;
+    public int Priority => 99;
     public Task<bool> CanResolveAsync(string query)
     {
         return Task.FromResult(Uri.IsWellFormedUriString(query, UriKind.Absolute));

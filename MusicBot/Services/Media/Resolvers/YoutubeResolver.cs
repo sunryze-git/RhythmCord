@@ -7,7 +7,7 @@ namespace MusicBot.Services.Media.Resolvers;
 public class YoutubeResolver(YoutubeBackend youtubeBackend, ILogger<YoutubeResolver> logger) : IMediaResolver
 {
     public string Name => "YouTubeExplode";
-    public int Priority => 2;
+    public int Priority => 4;
     public Task<bool> CanResolveAsync(string query)
     {
         // Can resolve URLs

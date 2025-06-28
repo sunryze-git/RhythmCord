@@ -1,3 +1,10 @@
+// SoundCloudNative
+// This module resolves SoundCloud tracks using a native approach, using the API
+// This code was directly rewritten from the original JavaScript implementation on the Cobalt.Tools project.
+// https://cobalt.tools/
+// https://github.com/imputnet/cobalt
+// https://github.com/imputnet/cobalt/blob/main/api/src/processing/services/soundcloud.js
+
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
@@ -18,7 +25,7 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
     };
 
     public string Name => "SoundCloudNative";
-    public int Priority => -1;
+    public int Priority => 2;
     public Task<bool> CanResolveAsync(string query)
     {
         if (!Uri.IsWellFormedUriString(query, UriKind.Absolute))
