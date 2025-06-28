@@ -101,20 +101,21 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
             AVChannelLayout outLayout = default;
             byte** convertedData = null;
             byte* buffer = null;
-
+            int res; // common return value for FFmpeg functions
+            
             var inHandle = GCHandle.Alloc(inStream);
             try
             {
                 _playbackStartTime = DateTime.UtcNow;
                 _totalFrameDuration = TimeSpan.Zero;
-                
+
                 const int bufferSize = 4096;
                 buffer = (byte*)ffmpeg.av_malloc(bufferSize);
                 if (buffer == null)
                     throw new OutOfMemoryException("Failed to allocate IO buffer.");
 
                 formatCtx = ffmpeg.avformat_alloc_context();
-                if (formatCtx == null) 
+                if (formatCtx == null)
                     throw new OutOfMemoryException("Failed to allocate format context.");
 
                 avioCtx = ffmpeg.avio_alloc_context(
@@ -129,23 +130,25 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                     throw new OutOfMemoryException("Failed to allocate AVIOContext.");
 
                 buffer = null; // Prevent double free
-                
+
                 formatCtx->pb = avioCtx;
                 formatCtx->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO;
 
-                if (ffmpeg.avformat_open_input(&formatCtx, null, null, null) != 0)
+                res = ffmpeg.avformat_open_input(&formatCtx, null, null, null);
+                if (res != 0)
                 {
                     formatCtx = null;
-                    var errorMsg = GetFFmpegErrorString(ffmpeg.AVERROR(ffmpeg.EINVAL));
+                    var errorMsg = GetFFmpegErrorString(res);
                     throw new ApplicationException($"Failed to open input stream: {errorMsg}");
                 }
 
-                if (ffmpeg.avformat_find_stream_info(formatCtx, null) < 0)
+                res = ffmpeg.avformat_find_stream_info(formatCtx, null);
+                if (res < 0)
                 {
-                    var errorMsg = GetFFmpegErrorString(ffmpeg.AVERROR(ffmpeg.EINVAL));
+                    var errorMsg = GetFFmpegErrorString(res);
                     throw new ApplicationException($"Failed to analyze stream information: {errorMsg}");
                 }
-                
+
                 // Find audio stream
                 var audioStreamIndex = -1;
                 for (var i = 0; i < formatCtx->nb_streams; i++)
@@ -159,7 +162,7 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                 {
                     throw new ApplicationException("The given content has no audio track.");
                 }
-                
+
                 // Set duration
                 try
                 {
@@ -199,16 +202,25 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                 if (codec == null)
                 {
                     throw new InvalidAudioException(
-                        "Unsupported audio codec.",codecPar->codec_id.ToString());
+                        "Unsupported audio codec.", codecPar->codec_id.ToString());
                 }
 
                 codecCtx = ffmpeg.avcodec_alloc_context3(codec);
-                if (ffmpeg.avcodec_parameters_to_context(codecCtx, codecPar) < 0)
-                    throw new ApplicationException("Failed to copy codec parameters.");
-                if (ffmpeg.avcodec_open2(codecCtx, codec, null) < 0)
+
+                res = ffmpeg.avcodec_parameters_to_context(codecCtx, codecPar);
+                if (res < 0)
                 {
-                    throw new InvalidAudioException(
-                        "Failed to open codec.", codecPar->codec_id.ToString());
+                    var errorMsg = GetFFmpegErrorString(res);
+                    throw new ApplicationException(
+                        $"Failed to copy codec parameters to context: {errorMsg}");
+                }
+
+                res = ffmpeg.avcodec_open2(codecCtx, codec, null);
+                if (res < 0)
+                {
+                    var errorMsg = GetFFmpegErrorString(res);
+                    throw new ApplicationException(
+                        $"Failed to open codec: {errorMsg}");
                 }
 
                 // Print codec information
@@ -224,18 +236,20 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
 
                 swrCtx = ffmpeg.swr_alloc();
                 var inLayout = codecCtx->ch_layout;
-                
-                var stereoLayoutResult = ffmpeg.av_channel_layout_from_mask(&outLayout, ffmpeg.AV_CH_LAYOUT_STEREO);
-                if (stereoLayoutResult < 0)
+
+                res = ffmpeg.av_channel_layout_from_mask(&outLayout, ffmpeg.AV_CH_LAYOUT_STEREO);
+                if (res < 0)
                 {
-                    throw new ApplicationException("Failed to create a stereo channel layout.");
+                    var errorMsg = GetFFmpegErrorString(res);
+                    throw new ApplicationException(
+                        $"Failed to create output channel layout: {errorMsg}");
                 }
 
                 ffmpeg.av_channel_layout_default(&outLayout, codecCtx->ch_layout.nb_channels);
 
                 // Resampler
                 const int targetSampleRate = 48000; // Discord's standard sample rate
-                var res = ffmpeg.swr_alloc_set_opts2(
+                res = ffmpeg.swr_alloc_set_opts2(
                     &swrCtx,
                     &outLayout,
                     AVSampleFormat.AV_SAMPLE_FMT_S16,
@@ -250,8 +264,13 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                     throw new ApplicationException("Failed to allocate resample context.");
                 }
 
-                if (ffmpeg.swr_init(swrCtx) < 0)
-                    throw new ApplicationException("Failed to initialize resampler.");
+                res = ffmpeg.swr_init(swrCtx);
+                if (res < 0)
+                {
+                    var errorMsg = GetFFmpegErrorString(res);
+                    throw new ApplicationException(
+                        $"Failed to initialize resample context: {errorMsg}");
+                }
 
                 packet = ffmpeg.av_packet_alloc();
                 frame = ffmpeg.av_frame_alloc();
@@ -260,10 +279,16 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
 
                 while (true)
                 {
-                    var readResult = ffmpeg.av_read_frame(formatCtx, packet);
-                    if (readResult < 0) break;
-                    
                     token.ThrowIfCancellationRequested();
+
+                    res = ffmpeg.av_read_frame(formatCtx, packet);
+                    if (res < 0)
+                    {
+                        if (packet != null) break; // EOF
+                        var errorMsg = GetFFmpegErrorString(res);
+                        throw new ApplicationException(
+                            $"Failed to read frame from input stream: {errorMsg}");
+                    }
 
                     if (packet->stream_index != audioStreamIndex)
                     {
@@ -271,27 +296,27 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                         continue;
                     }
 
-                    var sendResult = ffmpeg.avcodec_send_packet(codecCtx, packet);
+                    res = ffmpeg.avcodec_send_packet(codecCtx, packet);
                     ffmpeg.av_packet_unref(packet);
-                    if (sendResult < 0)
+                    if (res < 0)
                     {
-                        var errorMsg = GetFFmpegErrorString(sendResult);
+                        var errorMsg = GetFFmpegErrorString(res);
                         throw new ApplicationException(
                             $"Audio decoding failed: {errorMsg}");
                     }
-                    
+
                     while (true)
                     {
-                        var receiveResult = ffmpeg.avcodec_receive_frame(codecCtx, frame);
-                        if (receiveResult == ffmpeg.AVERROR(ffmpeg.EAGAIN) || receiveResult == ffmpeg.AVERROR_EOF)
+                        res = ffmpeg.avcodec_receive_frame(codecCtx, frame);
+                        if (res == ffmpeg.AVERROR(ffmpeg.EAGAIN) || res == ffmpeg.AVERROR_EOF)
                             break;
-                        if (receiveResult < 0) 
+                        if (res < 0)
                         {
-                            var errorMsg = GetFFmpegErrorString(receiveResult);
+                            var errorMsg = GetFFmpegErrorString(res);
                             throw new ApplicationException(
                                 $"Failed to receive frame from decoder: {errorMsg}");
                         }
-                        
+
                         token.ThrowIfCancellationRequested();
 
                         var outSamplesLong = ffmpeg.av_rescale_rnd(
@@ -362,10 +387,12 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                         }
                         else
                         {
-                            logger.LogDebug("Buffer size exceeded reusable buffer, allocating new buffer of size {OutputBufferSize}.", outputBufferSize);
+                            logger.LogDebug(
+                                "Buffer size exceeded reusable buffer, allocating new buffer of size {OutputBufferSize}.",
+                                outputBufferSize);
                             managedBuffer = new byte[outputBufferSize];
                         }
-                        
+
                         Marshal.Copy((IntPtr)convertedData[0], managedBuffer, 0, outputBufferSize);
 
                         // Apply a volume adjustment
@@ -388,7 +415,7 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                                 samplePtr[i] = (short)scaled;
                             }
                         }
-                        
+
                         // hacky ass fix
                         var frameDuration = TimeSpan.FromSeconds((double)convertedSamples / targetSampleRate);
                         _totalFrameDuration += frameDuration;
@@ -407,7 +434,7 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                         }
 
                         outStream.Write(managedBuffer, 0, outputBufferSize);
-                        
+
                         // Update current song position
                         try
                         {
@@ -426,6 +453,23 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
 
                     ffmpeg.av_packet_unref(packet);
                 }
+            }
+            catch (ApplicationException)
+            {
+                // dump stream to file for debugging
+                logger.LogError("Dumping input stream to file for debugging purposes.");
+                try
+                {
+                    using var fileStream = new FileStream("debug_dump.raw", FileMode.Create, FileAccess.Write);
+                    inStream.CopyTo(fileStream);
+                    logger.LogInformation("Input stream dumped to debug_dump.raw");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to dump input stream to file.");
+                }
+
+                throw;
             }
             catch (OperationCanceledException)
             {
