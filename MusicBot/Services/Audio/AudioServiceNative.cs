@@ -12,6 +12,8 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
     private readonly Lock _positionLock = new();
     private TimeSpan _currentSongLength;
     private TimeSpan _currentSongPosition;
+    private DateTime _playbackStartTime;
+    private TimeSpan _totalFrameDuration;
     
     internal float Volume { get; set; } = 0.5f;
 
@@ -103,6 +105,9 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
             var inHandle = GCHandle.Alloc(inStream);
             try
             {
+                _playbackStartTime = DateTime.UtcNow;
+                _totalFrameDuration = TimeSpan.Zero;
+                
                 const int bufferSize = 4096;
                 buffer = (byte*)ffmpeg.av_malloc(bufferSize);
                 if (buffer == null)
@@ -383,6 +388,23 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                                 samplePtr[i] = (short)scaled;
                             }
                         }
+                        
+                        // hacky ass fix
+                        var frameDuration = TimeSpan.FromSeconds((double)convertedSamples / targetSampleRate);
+                        _totalFrameDuration += frameDuration;
+
+                        var expectedElapsed = _totalFrameDuration;
+                        var actualElapsed = DateTime.UtcNow - _playbackStartTime;
+
+                        if (expectedElapsed > actualElapsed)
+                        {
+                            var delay = expectedElapsed - actualElapsed;
+                            var delayMicroseconds = (int)(delay.TotalMilliseconds * 1000);
+                            if (delayMicroseconds > 1000) // Only delay if > 1ms
+                            {
+                                ffmpeg.av_usleep((uint)delayMicroseconds);
+                            }
+                        }
 
                         outStream.Write(managedBuffer, 0, outputBufferSize);
                         
@@ -421,27 +443,48 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                     ffmpeg.av_freep(&convertedData);
                 }
 
-                if (packet != null) ffmpeg.av_packet_free(&packet);
+                if (packet != null)
+                {
+                    ffmpeg.av_packet_unref(packet);
+                    ffmpeg.av_packet_free(&packet);
+                }
+                
                 if (frame != null) ffmpeg.av_frame_free(&frame);
                 if (swrCtx != null) ffmpeg.swr_free(&swrCtx);
                 if (codecCtx != null) ffmpeg.avcodec_free_context(&codecCtx);
 
+                // AVIO context cleanup - this also frees the buffer
                 if (avioCtx != null)
                 {
                     ffmpeg.avio_context_free(&avioCtx);
+                    buffer = null; // Buffer was freed by avio_context_free
                 }
-                else if (buffer != null)
+    
+                // Only free buffer if AVIO context wasn't created
+                if (buffer != null)
                 {
                     ffmpeg.av_free(buffer);
                 }
                 
-                if (formatCtx != null) ffmpeg.avformat_close_input(&formatCtx);
+                // Format context cleanup
+                if (formatCtx != null) 
+                    ffmpeg.avformat_close_input(&formatCtx);
+                
+                // Dispose stream before freeing GCHandle
+                try
+                {
+                    inStream.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Error disposing input stream");
+                }
 
+                // Free GCHandle last
                 if (inHandle.IsAllocated)
                     inHandle.Free();
-                
-                inStream.Dispose(); // hopefully this fixes the problems.
 
+                // Reset position tracking
                 CurrentSongLength = TimeSpan.Zero;
                 CurrentSongPosition = TimeSpan.Zero;
 
