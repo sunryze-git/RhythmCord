@@ -239,6 +239,44 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
             if (track.Media?.Transcodings is null)
                 return null;
             
+            // Print all available transcodings to console
+            Console.WriteLine($"\n=== Available streams for: {track.Title} ===");
+            Console.WriteLine("Progressive streams:");
+            var progressiveStreams = track.Media.Transcodings
+                .Where(t => t.Format?.Protocol == "progressive")
+                .ToList();
+        
+            if (progressiveStreams.Any())
+            {
+                foreach (var stream in progressiveStreams)
+                {
+                    Console.WriteLine($"  - Preset: {stream.Preset}, Snipped: {stream.Snipped}, Encrypted: {stream.Format?.Protocol?.Contains("encrypted")}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("  No progressive streams available");
+            }
+
+            Console.WriteLine("HLS streams:");
+            var hlsStreams = track.Media.Transcodings
+                .Where(t => t.Format?.Protocol == "hls")
+                .ToList();
+        
+            if (hlsStreams.Any())
+            {
+                foreach (var stream in hlsStreams)
+                {
+                    Console.WriteLine($"  - Preset: {stream.Preset}, Snipped: {stream.Snipped}, Encrypted: {stream.Format?.Protocol?.Contains("encrypted")}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("  No HLS streams available");
+            }
+
+            Console.WriteLine("=== End of available streams ===\n");
+            
             var selectedStream = FindBestTranscoding(track.Media.Transcodings);
             if (selectedStream?.Url is null)
             {
@@ -268,7 +306,7 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
                 PropertyNameCaseInsensitive = true
             });
 
-            if (streamInfo?.Url != null) return streamInfo?.Url;
+            if (streamInfo?.Url != null) return streamInfo.Url;
             
             logger.LogWarning("Stream info deserialization failed or returned null URL");
             
