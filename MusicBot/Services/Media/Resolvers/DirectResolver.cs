@@ -4,7 +4,7 @@ using YoutubeExplode.Videos;
 
 namespace MusicBot.Services.Media.Resolvers;
 
-public class DirectFileResolver(DlpBackend dlpBackend) : IMediaResolver
+public class DirectFileResolver(DlpBackend dlpBackend, HttpClient httpClient) : IMediaResolver
 {
     private static readonly HashSet<string> AudioFileTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -34,7 +34,7 @@ public class DirectFileResolver(DlpBackend dlpBackend) : IMediaResolver
     {
         var uri = new Uri(query);
         var name = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
-        var stream = await dlpBackend.GetStreamFromUriAsync(uri);
+        var stream = await httpClient.GetStreamAsync(uri);
         
         return new List<IVideo> 
         { 
@@ -47,8 +47,6 @@ public class DirectFileResolver(DlpBackend dlpBackend) : IMediaResolver
         if (video is not CustomSong customSong)
             throw new NotSupportedException("DirectFileResolver only supports CustomSong videos");
         
-        if (customSong.Source.CanSeek)
-            customSong.Source.Position = 0;
         return Task.FromResult(customSong.Source);
     }
 }

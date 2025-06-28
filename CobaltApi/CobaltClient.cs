@@ -40,16 +40,7 @@ public class CobaltClient(string instanceUrl)
     {
         var tunnelUrl = video.Tunnel.FirstOrDefault();
         if (tunnelUrl == null) throw new InvalidOperationException("No tunnel URL found in VideoResponse.");
-        // Use SendAsync with HttpCompletionOption.ResponseHeadersReceived to prevent buffering
-        var request = new HttpRequestMessage(HttpMethod.Get, new Uri(tunnelUrl).PathAndQuery);
-        var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
-        response.EnsureSuccessStatusCode();
-
-        var stream = await response.Content.ReadAsStreamAsync();
-    
-        Console.WriteLine($"[HTTP] Stream type: {stream.GetType().Name}");
-        Console.WriteLine($"[HTTP] Content-Length: {response.Content.Headers.ContentLength?.ToString() ?? "Unknown"}");
-
+        var stream = await _client.GetStreamAsync(new Uri(tunnelUrl).PathAndQuery);
         return stream;
     }
     

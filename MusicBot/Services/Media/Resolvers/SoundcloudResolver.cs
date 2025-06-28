@@ -225,9 +225,7 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
     {
         if (video is not CustomSong customSong)
             throw new NotSupportedException("SoundCloudResolver only supports CustomSong videos");
-        
-        if (customSong.Source.CanSeek)
-            customSong.Source.Position = 0;
+
         return Task.FromResult(customSong.Source);
 
     }
