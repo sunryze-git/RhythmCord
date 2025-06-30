@@ -1,5 +1,5 @@
 using MusicBot.Services.Media.Backends;
-using YoutubeExplode.Videos;
+using MusicBot.Utilities;
 
 namespace MusicBot.Services.Media.Resolvers;
 
@@ -12,14 +12,22 @@ public class YtdlpResolver(DlpBackend dlpService) : IMediaResolver
         return Task.FromResult(Uri.IsWellFormedUriString(query, UriKind.Absolute));
     }
 
-    public async Task<IReadOnlyList<IVideo>> ResolveAsync(string query)
+    public async Task<IReadOnlyList<CustomSong>> ResolveAsync(string query)
     {
         var results = await dlpService.GetMetadataAsync(query);
-        return results;
+        // Map IVideo results to CustomSong with SongSource.Ytdlp (if it exists, else use SongSource.YouTube)
+        return results.Select(v => new CustomSong(v, query, SongSource.YouTube)).ToList();
     }
 
-    public Task<Stream> GetStreamAsync(IVideo video)
+    public Task<Stream> GetStreamAsync(CustomSong video)
     {
-        throw new NotSupportedException("Stream is already included with the video metadata.");
+        // Use DlpBackend to get the stream for the song's URL
+        return Task.FromResult(dlpService.GetSongStream(video.Url));
+    }
+
+    public Task<bool> CanGetStreamAsync(CustomSong video)
+    {
+        // Only allow stream if the source is YouTube (or Ytdlp if you add it)
+        return Task.FromResult(video.Source == SongSource.YouTube);
     }
 }

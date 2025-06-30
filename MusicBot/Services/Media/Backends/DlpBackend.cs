@@ -6,55 +6,19 @@ using MusicBot.Exceptions;
 using MusicBot.Records;
 using MusicBot.Utilities;
 using Newtonsoft.Json;
+using YoutubeExplode.Common;
+using Thumbnail = MusicBot.Records.Thumbnail;
 
 namespace MusicBot.Services.Media.Backends;
 
 // Provides methods to get information from search terms.
-public class DlpBackend
+public class DlpBackend(ILogger<DlpBackend> logger)
 {
-    private readonly HttpClient _httpClient;
-    private readonly Process _dlpProcess = new();
-    private readonly ILogger<DlpBackend> _logger;
-
-    public DlpBackend(ILogger<DlpBackend> logger)
-    {
-        // Initializing the process here with its start info can save 
-        // a very small amount of time, but its a good optimization strategy
-        var handler = new SocketsHttpHandler
-        {
-            EnableMultipleHttp2Connections = true,
-            EnableMultipleHttp3Connections = true,
-            MaxConnectionsPerServer = 100,
-            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
-        };
-        _httpClient = new HttpClient(handler);
-        _logger = logger;
-        _dlpProcess.StartInfo = new ProcessStartInfo
-        {
-            FileName = "yt-dlp",
-            Arguments = string.Empty,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        };
-        _dlpProcess.EnableRaisingEvents = true;
-        _dlpProcess.Exited += (_, _) =>
-        {
-            _logger.LogWarning("yt-dlp process exited with code {ExitCode}.", _dlpProcess.ExitCode);
-            // YT-DLP Log
-            var errorOutput = _dlpProcess.StandardError.ReadToEnd();
-            if (!string.IsNullOrWhiteSpace(errorOutput))
-            {
-                _logger.LogWarning("YT-DLP Log: {ErrorOutput}", errorOutput);
-            }
-        };
-    }
-
     private const string MetadataFlags =
-        """ --skip-download -f bestaudio --dump-json --no-check-certificate --geo-bypass --ignore-errors --flat-playlist """;
+        " --skip-download -f bestaudio --dump-json --no-check-certificate --geo-bypass --ignore-errors --flat-playlist ";
 
-    private const string StreamFlags = """-f bestaudio --concurrent-fragments 12 --no-check-certificate --geo-bypass --ignore-errors -o - """;
+    private const string StreamFlags = 
+        "-f bestaudio --concurrent-fragments 12 --no-check-certificate --geo-bypass --ignore-errors -o - ";
 
     private class ThumbnailComparer : Comparer<Thumbnail>
     {
@@ -82,17 +46,27 @@ public class DlpBackend
                 .OfType<Song>()
                 .Select(song =>
                 {
-                    // We don't care about the resolution
                     var thumbnails = song.Thumbnails?
                         .Where(thumb => thumb.Width is not null && thumb.Height is not null)
                         .OrderDescending(new ThumbnailComparer())
-                        .Select(thumb => new YoutubeExplode.Common.Thumbnail(thumb.Url, new()))
-                        .ToImmutableList();
-                    var artists = song.Artists is not null && song.Artists!.Count > 0
-                        ? string.Join(", ", song.Artists!)
-                        : null;
-                    return new CustomSong(song.WebpageUrl, song.Title, artists, thumbnails,
-                        GetSongStream(song.WebpageUrl));
+                        .Select(thumb => new YoutubeExplode.Common.Thumbnail(thumb.Url, new Resolution()))
+                        .ToImmutableList() ?? ImmutableList<YoutubeExplode.Common.Thumbnail>.Empty;
+                    var artists = song.Artists is not null && song.Artists.Count > 0
+                        ? string.Join(", ", song.Artists)
+                        : song.Uploader;
+                    var duration = song.Duration is not null
+                        ? TimeSpan.FromSeconds(song.Duration.Value)
+                        : TimeSpan.Zero;
+                    var thumbnailUrl = thumbnails.FirstOrDefault()?.Url ?? string.Empty;
+                    return new CustomSong(
+                        url,
+                        song.Url,
+                        song.Title,
+                        artists,
+                        duration,
+                        thumbnailUrl,
+                        SongSource.YouTube // Use YouTube as fallback, or change to SongSource.Ytdlp if you add it
+                    );
                 })
                 .ToImmutableArray();
 
@@ -100,7 +74,7 @@ public class DlpBackend
         }
         catch (ArgumentNullException ex)
         {
-            _logger.LogError(ex, "yt-dlp JSON response was invalid.");
+            logger.LogError(ex, "yt-dlp JSON response was invalid.");
         }
         catch (SearchException)
         {
@@ -108,58 +82,77 @@ public class DlpBackend
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting song/playlist metadata for URL '{Url}'.", url);
+            logger.LogError(ex, "Error getting song/playlist metadata for URL '{Url}'.", url);
         }
         
         return [];
     }
 
-    private Stream GetSongStream(string url)
+    private async Task<string[]> GetDlpOutputStringAsync(string arguments, int timeoutMs = 30000)
     {
-        var argument = $"{url} {StreamFlags}";
-        return GetDlpOutputStream(argument);
-    }
-
-    internal async Task<Stream> GetStreamFromUriAsync(Uri url)
-    {
-        return await _httpClient.GetStreamAsync(url);
-    }
-
-    private void StartDlpOperation(string arguments)
-    {
-        _dlpProcess.StartInfo.Arguments = arguments;
-        _dlpProcess.Start();
-    }
-
-    private async Task<string[]> GetDlpOutputStringAsync(string arguments)
-    {
-        StartDlpOperation(arguments);
-
-        var outputTask = _dlpProcess.StandardOutput.ReadToEndAsync();
-        var errorTask = _dlpProcess.StandardError.ReadToEndAsync();
-        await Task.WhenAll(outputTask, errorTask, _dlpProcess.WaitForExitAsync());
-
-        // Process error output information
-        var errorOutput = await errorTask;
-        if (!string.IsNullOrWhiteSpace(errorOutput))
+        using var process = new Process();
+        process.StartInfo = new ProcessStartInfo
         {
-            _logger.LogWarning("yt-dlp message: {ErrorOutput}", errorOutput);
-        }
-
-        if (_dlpProcess.ExitCode != 0)
+            FileName = "yt-dlp",
+            Arguments = arguments,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        process.EnableRaisingEvents = false;
+        try
         {
-            _logger.LogError("yt-dlp returned error code {ErrorCode}.", _dlpProcess.ExitCode);
-            throw new SearchException(errorOutput);
+            process.Start();
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(timeoutMs))
+            {
+                try { process.Kill(); } catch { /* ignore */ }
+                throw new TimeoutException($"yt-dlp timed out after {timeoutMs}ms");
+            }
+            var output = await outputTask;
+            var error = await errorTask;
+            if (!string.IsNullOrWhiteSpace(error))
+                logger.LogWarning("yt-dlp message: {ErrorOutput}", error);
+            if (process.ExitCode != 0)
+                throw new SearchException(error);
+            return output.Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries);
         }
-        
-        // Convert string to array
-        var response = await outputTask;
-        return response.Split([Environment.NewLine], StringSplitOptions.None);
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "yt-dlp process failed");
+            throw;
+        }
     }
 
-    private Stream GetDlpOutputStream(string arguments)
+    public Stream GetSongStream(string url, int timeoutMs = 60000)
     {
-        StartDlpOperation(arguments);
-        return _dlpProcess.StandardOutput.BaseStream;
+        var arguments = $"{url} {StreamFlags}";
+        var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "yt-dlp",
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            },
+            EnableRaisingEvents = false
+        };
+        try
+        {
+            process.Start();
+            // Optionally, you can implement a timeout here as well
+            return process.StandardOutput.BaseStream;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "yt-dlp process failed to start for streaming");
+            process.Dispose();
+            throw;
+        }
     }
 }

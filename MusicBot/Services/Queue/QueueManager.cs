@@ -6,12 +6,12 @@ namespace MusicBot.Services.Queue;
 
 public class QueueManager
 {
-    private readonly List<IVideo> _songQueue = [];
+    private readonly List<CustomSong> _songQueue = [];
 
-    public ImmutableList<IVideo> SongQueue => _songQueue.ToImmutableList();
-    public IVideo? CurrentSong => _songQueue.FirstOrDefault();
+    public ImmutableList<CustomSong> SongQueue => _songQueue.ToImmutableList();
+    public CustomSong? CurrentSong => _songQueue.FirstOrDefault();
     
-    public void AddSong(IVideo song, bool playNext = false)
+    public void AddSong(CustomSong song, bool playNext = false)
     {
         if (playNext)
         {
@@ -23,7 +23,7 @@ public class QueueManager
         }
     }
     
-    public void AddSong(IEnumerable<IVideo> songs, bool playNext = false)
+    public void AddSong(IEnumerable<CustomSong> songs, bool playNext = false)
     {
         if (playNext)
         {

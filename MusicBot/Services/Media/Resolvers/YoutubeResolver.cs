@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using MusicBot.Services.Media.Backends;
+using MusicBot.Utilities;
 using YoutubeExplode.Videos;
 
 namespace MusicBot.Services.Media.Resolvers;
@@ -7,22 +8,27 @@ namespace MusicBot.Services.Media.Resolvers;
 public class YoutubeResolver(YoutubeBackend youtubeBackend, ILogger<YoutubeResolver> logger) : IMediaResolver
 {
     public string Name => "YouTubeExplode";
-    public int Priority => 4;
+    public int Priority => 98;
+    
+    private static readonly HashSet<string> YouTubeDomains = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "youtube.com",
+        "www.youtube.com",
+        "youtu.be",
+        "music.youtube.com"
+    };
+    
     public Task<bool> CanResolveAsync(string query)
     {
         // Can resolve URLs
-        if (Uri.IsWellFormedUriString(query, UriKind.Absolute))
-        {
-            var uri = new Uri(query);
-            var isYouTube = uri.Host.Contains("youtube.com") || uri.Host.Contains("youtu.be");
-            return Task.FromResult(isYouTube);
-        }
-
-        // Can also resolve search queries (any non-URL string)
-        return Task.FromResult(!string.IsNullOrWhiteSpace(query));
+        if (!Uri.IsWellFormedUriString(query, UriKind.Absolute))
+            return Task.FromResult(!string.IsNullOrWhiteSpace(query)); // not a URL but could be a search
+        
+        var uri = new Uri(query);
+        return Task.FromResult(YouTubeDomains.Contains(uri.Host)); // is a youtube URL
     }
 
-    public async Task<IReadOnlyList<IVideo>> ResolveAsync(string query)
+    public async Task<IReadOnlyList<CustomSong>> ResolveAsync(string query)
     {
         try
         {
@@ -35,18 +41,24 @@ public class YoutubeResolver(YoutubeBackend youtubeBackend, ILogger<YoutubeResol
                 {
                     logger.LogInformation("Resolving YouTube playlist: {PlaylistUrl}", uri);
                     var playlist = await youtubeBackend.GetPlaylistVideosAsync(uri.AbsoluteUri);
-                    return playlist.Count == 0 ? Array.Empty<IVideo>() : playlist;
+                    return playlist.Count == 0 
+                        ? Array.Empty<CustomSong>() 
+                        : playlist.Select(v => new CustomSong(v, query, SongSource.YouTube)).ToList();
                 }
 
                 logger.LogInformation("Resolving YouTube video: {VideoUrl}", uri);
                 var video = await youtubeBackend.GetVideoAsync(uri.AbsoluteUri);
-                return video == null ? Array.Empty<IVideo>() : new List<IVideo> { video };
+                return video == null 
+                    ? Array.Empty<CustomSong>() 
+                    : new List<CustomSong> { new(video, query, SongSource.YouTube) };
             }
 
             // Handle search query
             logger.LogInformation("Searching YouTube for: {Query}", query);
             var searchResult = await youtubeBackend.GetVideoAsync(query);
-            return searchResult == null ? Array.Empty<IVideo>() : new List<IVideo> { searchResult };
+            return searchResult == null 
+                ? Array.Empty<CustomSong>() 
+                : new List<CustomSong> { new(searchResult, query, SongSource.YouTube) };
         }
         catch (Exception ex)
         {
@@ -55,11 +67,22 @@ public class YoutubeResolver(YoutubeBackend youtubeBackend, ILogger<YoutubeResol
         }
     }
 
-    public Task<Stream> GetStreamAsync(IVideo video)
+    public async Task<Stream> GetStreamAsync(CustomSong video)
     {
-        throw new NotSupportedException("You should use the Cobalt API to get streams.");
+        if (video.Source != SongSource.YouTube)
+            throw new Exception($"Cannot stream non-YouTube song with YouTubeResolver: {video.Title}");
+        // Try to resolve to IVideo if needed
+        var resolved = await youtubeBackend.GetVideoAsync(video.Url);
+        if (resolved == null)
+            throw new Exception($"Could not resolve YouTube video for streaming: {video.Title}");
+        return await youtubeBackend.GetStreamAsync(resolved);
     }
-    
+
+    public async Task<bool> CanGetStreamAsync(CustomSong video)
+    {
+        return await Task.FromResult(video.Source == SongSource.YouTube);
+    }
+
     private static bool IsPlaylistUrl(Uri uri)
     {
         return uri.AbsolutePath == "/playlist" || uri.Query.Contains("list=");

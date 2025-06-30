@@ -4,7 +4,6 @@ using MusicBot.Utilities;
 using NetCord;
 using NetCord.Rest;
 using NetCord.Services.ApplicationCommands;
-using YoutubeExplode.Videos;
 
 namespace MusicBot.Commands;
 
@@ -124,25 +123,14 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
             await RespondAsync(InteractionCallback.Message("No song is currently playing."));
             return;
         }
-        
-        var description = song switch
-        {
-            Video video => $"""
-                            **{video.Title}**
-                            **{video.Author}**
 
-                            **Playback**: {playbackHandler.Position.ToAdaptivePlaybackString()} / {playbackHandler.Duration.ToAdaptivePlaybackString()}
-                            **Upload Date**: {video.UploadDate}
-                            **[Listen]({video.Url})**
-                            """,
-            _ => $"""
-                  **{song.Title}**
-                  **{song.Author}**
+        var description = $"""
+                           **{song.Title}**
+                           **{song.Author}**
 
-                  **Playback**: {playbackHandler.Position.ToAdaptivePlaybackString()} / {playbackHandler.Duration.ToAdaptivePlaybackString()}
-                  **[Listen]({song.Url})**
-                  """
-        };
+                           **Playback**: {playbackHandler.Position.ToAdaptivePlaybackString()} / {playbackHandler.Duration.ToAdaptivePlaybackString()}
+                           **[Listen]({song.Url})**
+                           """;
 
         var embed = new EmbedProperties
         {

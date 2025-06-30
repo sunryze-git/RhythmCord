@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using MusicBot.Exceptions;
 using MusicBot.Services.Media;
 using MusicBot.Services.Queue;
+using MusicBot.Utilities;
 using NetCord;
 using NetCord.Gateway;
 using NetCord.Gateway.Voice;
@@ -31,12 +32,12 @@ public class PlaybackHandler(
     public void Shuffle() => queueManager.Shuffle();
     public void Stop() => StopQueue();
     public async Task EndAsync() => await EndPlaybackAsync();
-    public ImmutableList<IVideo> SongQueue => queueManager.SongQueue;
-    public IVideo? CurrentSong => queueManager.CurrentSong;
+    public ImmutableList<CustomSong> SongQueue => queueManager.SongQueue;
+    public CustomSong? CurrentSong => queueManager.CurrentSong;
     public TimeSpan Duration => audioService.CurrentSongLength;
     public TimeSpan Position => audioService.CurrentSongPosition;
 
-    public async Task<IVideo> AddSongAsync(string term, bool next, ApplicationCommandContext ctx)
+    public async Task<CustomSong> AddSongAsync(string term, bool next, ApplicationCommandContext ctx)
     {
         _invokedChannel = ctx.Channel;
         _invokedGuild = ctx.Guild;
@@ -245,6 +246,12 @@ public class PlaybackHandler(
             }
 
             await using var songStream = await mediaResolver.ResolveStreamAsync(next);
+            if (songStream == null)
+            {
+                logger.LogWarning("No stream could be resolved for the current song.");
+                await TrySendMessageAsync("Could not resolve a playable stream for this song.");
+                return;
+            }
             await audioService.StartAudioStreamAsync(songStream, outStream, _skipSongCts.Token);
         }
         catch (OperationCanceledException)

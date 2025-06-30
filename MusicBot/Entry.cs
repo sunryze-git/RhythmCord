@@ -93,7 +93,6 @@ public static class MusicBot
             .AddScoped<IMediaResolver, CobaltResolver>()
             .AddScoped<IMediaResolver, YtdlpResolver>()
             .AddScoped<IMediaResolver, SoundcloudResolver>()
-            .AddScoped<IMediaResolver, SpotifyResolver>()
             .AddTransient<GuildMusicService>()
             .BuildServiceProvider();
         

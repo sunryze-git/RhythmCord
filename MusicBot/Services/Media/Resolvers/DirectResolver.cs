@@ -8,7 +8,8 @@ public class DirectFileResolver(DlpBackend dlpBackend, HttpClient httpClient) : 
 {
     private static readonly HashSet<string> AudioFileTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".mp3", ".wav", ".flac", ".ogg", ".opus", ".m4a", ".aac"
+        ".webm", ".mkv", ".flv", ".vob", ".ogv", ".ogg", ".avi", ".mov", ".qt", ".wmv", ".m4v", ".mp4", // video formats
+        ".aac", ".aiff", ".alac", ".flac", ".m4a", ".mp1", ".mp2", ".mp3", ".opus", ".wav", ".wma" // audio formats
     };
     
     public string Name => "Direct";
@@ -17,7 +18,7 @@ public class DirectFileResolver(DlpBackend dlpBackend, HttpClient httpClient) : 
     public Task<bool> CanResolveAsync(string query)
     {
         if (!Uri.IsWellFormedUriString(query, UriKind.Absolute))
-            return Task.FromResult(false);
+            return Task.FromResult(false); // not a URL.
 
         try
         {
@@ -28,25 +29,31 @@ public class DirectFileResolver(DlpBackend dlpBackend, HttpClient httpClient) : 
         catch
         {
             return Task.FromResult(false);
-        }    }
+        }    
+    }
 
-    public async Task<IReadOnlyList<IVideo>> ResolveAsync(string query)
+    public async Task<IReadOnlyList<CustomSong>> ResolveAsync(string query)
     {
         var uri = new Uri(query);
         var name = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
-        var stream = await httpClient.GetStreamAsync(uri);
-        
-        return new List<IVideo> 
-        { 
-            new CustomSong(query, name, null, null, stream) 
+
+        return new List<CustomSong>
+        {
+            new(query, uri.ToString(), name, string.Empty, TimeSpan.Zero, string.Empty, SongSource.Direct)
         };
     }
 
-    public Task<Stream> GetStreamAsync(IVideo video)
+    public async Task<Stream> GetStreamAsync(CustomSong video)
     {
-        if (video is not CustomSong customSong)
-            throw new NotSupportedException("DirectFileResolver only supports CustomSong videos");
-        
-        return Task.FromResult(customSong.Source);
+        if (video.Source != SongSource.Direct)
+            throw new Exception($"Cannot stream non-direct song with DirectFileResolver: {video.Title}");
+        var stream = await httpClient.GetStreamAsync(video.Url);
+        return stream;
+    }
+
+    public async Task<bool> CanGetStreamAsync(CustomSong video)
+    {
+        return await Task.FromResult(video.Source == SongSource.Direct);
+
     }
 }

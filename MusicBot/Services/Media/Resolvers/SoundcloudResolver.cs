@@ -10,8 +10,6 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using MusicBot.Services.Media.Backends;
 using MusicBot.Utilities;
-using YoutubeExplode.Common;
-using YoutubeExplode.Videos;
 
 namespace MusicBot.Services.Media.Resolvers;
 
@@ -25,7 +23,7 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
     };
 
     public string Name => "SoundCloudNative";
-    public int Priority => 2;
+    public int Priority => 1;
     public Task<bool> CanResolveAsync(string query)
     {
         if (!Uri.IsWellFormedUriString(query, UriKind.Absolute))
@@ -34,7 +32,7 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
         return Task.FromResult(SoundCloudHosts.Contains(uri.Host));
     }
 
-    public async Task<IReadOnlyList<IVideo>> ResolveAsync(string query)
+    public async Task<IReadOnlyList<CustomSong>> ResolveAsync(string query)
     {
         try
         {
@@ -59,37 +57,52 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
                 return [];
             }
 
-            var streamUrl = await GetStreamUrlAsync(trackInfo, clientId);
-            if (string.IsNullOrEmpty(streamUrl))
-            {
-                logger.LogError("Failed to get stream URL for track: {Title}", trackInfo.Title);
-                return [];
-            }
-            
-            var stream = await client.GetStreamAsync(streamUrl);
-            
             var thumbnailUrl = GetBestThumbnailUrl(trackInfo.ArtworkUrl);
-            IReadOnlyList<Thumbnail>? thumbnails = null;
-            if (thumbnailUrl != null)
+            var duration = trackInfo.Duration > 0 ? TimeSpan.FromMilliseconds(trackInfo.Duration) : (TimeSpan?)null;
+
+            return new List<CustomSong>
             {
-                thumbnails = new List<Thumbnail> { new Thumbnail(thumbnailUrl, new Resolution()) };
-            }
-
-            var video = new CustomSong(
-                query,
-                trackInfo.Title?.Trim() ?? "Unknown Title",
-                trackInfo.User?.Username?.Trim(),
-                thumbnails,
-                stream
-            );
-
-            return new List<IVideo> { video };
+                new(query,
+                    query,
+                    trackInfo.Title?.Trim() ?? "Unknown Title",
+                    trackInfo.User?.Username?.Trim() ?? "Unknown Artist",
+                    duration ?? TimeSpan.Zero, 
+                    thumbnailUrl ?? string.Empty, 
+                    SongSource.SoundCloud)
+            };
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "SoundCloud resolution failed for: {Query}", query);
             return [];
         }
+    }
+
+    public async Task<Stream> GetStreamAsync(CustomSong video)
+    {
+        if (video.Source != SongSource.SoundCloud)
+            throw new Exception($"Cannot stream non-SoundCloud song with SoundcloudResolver: {video.Title}");
+        // Fetch the stream for the given video (CustomSong) on demand
+        var clientId = await FindClientIdAsync();
+        if (string.IsNullOrEmpty(clientId))
+            throw new InvalidOperationException("Failed to obtain SoundCloud client ID");
+
+        // Re-resolve the track info using the video URL
+        var trackInfo = await GetTrackInfoAsync(video.Url, clientId);
+        if (trackInfo == null)
+            throw new InvalidOperationException("Failed to get track info for: " + video.Url);
+
+        var streamUrl = await GetStreamUrlAsync(trackInfo, clientId);
+        if (string.IsNullOrEmpty(streamUrl))
+            throw new InvalidOperationException("Failed to get stream URL for track: " + trackInfo.Title);
+
+        return await client.GetStreamAsync(streamUrl);
+    }
+
+    public Task<bool> CanGetStreamAsync(CustomSong video)
+    {
+        // We can get a stream for any valid SoundCloud track
+        return Task.FromResult(video.Source == SongSource.SoundCloud);
     }
 
     private static string? GetBestThumbnailUrl(string? artworkUrl)
@@ -228,15 +241,7 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
         }
     }
 
-    public Task<Stream> GetStreamAsync(IVideo video)
-    {
-        if (video is not CustomSong customSong)
-            throw new NotSupportedException("SoundCloudResolver only supports CustomSong videos");
 
-        return Task.FromResult(customSong.Source);
-
-    }
-    
     private async Task<string?> GetStreamUrlAsync(SoundCloudTrack track, string clientId)
     {
         try

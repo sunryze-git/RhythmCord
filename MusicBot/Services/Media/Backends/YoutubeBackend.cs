@@ -65,4 +65,31 @@ public class YoutubeBackend(ILogger<YoutubeBackend> logger)
             return []; // Return empty list on failure
         }
     }
+    
+    internal async Task<Stream> GetStreamAsync(Video video)
+    {
+        logger.LogInformation("Getting stream for video: {Title}", video.Title);
+        YoutubeExplode.Videos.Streams.AudioOnlyStreamInfo? bestAudio = null;
+        try
+        {
+            // Use async enumerator to get the best audio stream as quickly as possible
+            var manifest = await _client.Videos.Streams.GetManifestAsync(video.Id);
+            foreach (var stream in manifest.GetAudioOnlyStreams())
+            {
+                if (bestAudio == null || stream.Bitrate > bestAudio.Bitrate)
+                    bestAudio = stream;
+            }
+            if (bestAudio == null)
+            {
+                logger.LogWarning("No audio stream found for video: {Title}", video.Title);
+                throw new Exception($"No audio stream found for video: {video.Title}");
+            }
+            return await _client.Videos.Streams.GetAsync(bestAudio);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get stream for video: {Title}", video.Title);
+            throw;
+        }
+    }
 }
