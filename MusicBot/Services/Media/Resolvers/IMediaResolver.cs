@@ -1,10 +1,10 @@
 using MusicBot.Utilities;
-using YoutubeExplode.Videos;
 
 namespace MusicBot.Services.Media.Resolvers;
 
 public interface IMediaResolver
 {
+    bool Enabled { get; }
     string Name { get; }
     int Priority { get; }
     
@@ -20,19 +20,19 @@ public interface IMediaResolver
     /// </summary>
     /// <param name="query"></param>
     /// <returns></returns>
-    Task<IReadOnlyList<CustomSong>> ResolveAsync(string query);
+    Task<IReadOnlyList<MusicTrack>> ResolveAsync(string query);
     
     /// <summary>
     /// Get the Stream for a given CustomSong.
     /// </summary>
     /// <param name="video"></param>
     /// <returns></returns>
-    Task<Stream> GetStreamAsync(CustomSong video);
+    Task<Stream> GetStreamAsync(MusicTrack video);
     
     /// <summary>
     /// Tests if a given CustomSong can be resolved to a stream by this resolver.
     /// </summary>
     /// <param name="video"></param>
     /// <returns></returns>
-    Task<bool> CanGetStreamAsync(CustomSong video);
+    Task<bool> CanGetStreamAsync(MusicTrack video);
 }

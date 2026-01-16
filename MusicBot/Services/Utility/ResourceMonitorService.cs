@@ -11,11 +11,9 @@ namespace MusicBot.Services.Utility;
 public class ResourceMonitorService(ILogger<ResourceMonitorService> logger, IServiceProvider serviceProvider)
     : BackgroundService
 {
-    private readonly ILogger<ResourceMonitorService> _logger = logger;
-    private readonly IServiceProvider _serviceProvider = serviceProvider;
     internal bool IsMonitoringEnabled;
 
-    private long _lastMemoryUsage;
+    private long _lastMemoryUsage = Process.GetCurrentProcess().WorkingSet64;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -40,6 +38,7 @@ public class ResourceMonitorService(ILogger<ResourceMonitorService> logger, ISer
         {
             var process = Process.GetCurrentProcess();
             var gcMemory = GC.GetTotalMemory(false) / 1024 / 1024;
+            var gcInfo = GC.GetGCMemoryInfo();
             var workingSet = process.WorkingSet64 / 1024 / 1024;
             var privateMem = process.PrivateMemorySize64 / 1024 / 1024;
             var cpuTime = process.TotalProcessorTime;
@@ -55,6 +54,7 @@ public class ResourceMonitorService(ILogger<ResourceMonitorService> logger, ISer
                                ═══════════════════════════════════════
                                Memory Usage:
                                     GC Memory:      {gcMemory:N0} MB
+                                    GC Heap:        {gcInfo.HeapSizeBytes / 1024 / 1024:N0} MB
                                     Working Set:    {workingSet:N0} MB
                                     Private Memory: {privateMem:N0} MB
                                Process Information:
@@ -71,11 +71,56 @@ public class ResourceMonitorService(ILogger<ResourceMonitorService> logger, ISer
                                {resolverInfo}
                                Active Streams:
                                {streamInfo}
+                               
+                               
+                               ═══════════════════════════════════════
+                               DI REGISTRATIONS
+                               ═══════════════════════════════════════
                                """);
+            foreach (var service in MusicBot.ServiceCollection)
+            {
+                var lifetime = service.Lifetime;
+                var type = service.ServiceType.Name;
+                var instanceStatus = "N/A";
+                if (service.ServiceType.IsGenericTypeDefinition)
+                {
+                    Console.WriteLine($"    {type} [{lifetime}] - Open generic, cannot resolve");
+                    continue;
+                }
+
+                if (lifetime == ServiceLifetime.Singleton)
+                {
+                    var instance = serviceProvider.GetService(service.ServiceType);
+                    instanceStatus = instance != null ? "Instantiated" : "Not instantiated";
+                }
+                Console.WriteLine($"    {type} [{lifetime}] - {instanceStatus}");
+            }
+            
+            // After DI REGISTRATIONS output
+            Console.WriteLine("═══════════════════════════════════════");
+            Console.WriteLine("ACTIVE AUDIO INSTANCES");
+            Console.WriteLine("═══════════════════════════════════════");
+
+            var orchestrator = serviceProvider.GetService<GuildAudioInstanceOrchestrator>();
+            if (orchestrator != null)
+            {
+                foreach (var instance in orchestrator.GetActiveManagers())
+                {
+                    Console.WriteLine($"    Instance: {instance.GetType().Name}");
+                    // List DI-registered dependencies if accessible
+                    // Example: PlaybackHandler, QueueManager, etc.
+                    Console.WriteLine($"        PlaybackHandler: {instance.PlaybackHandler.GetType().Name}");
+                    // Add more as needed
+                }
+            }
+            else
+            {
+                Console.WriteLine("    No active audio instances.");
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, ex.Message);
+            logger.LogError(ex, ex.Message);
         }
         
     }
@@ -84,7 +129,7 @@ public class ResourceMonitorService(ILogger<ResourceMonitorService> logger, ISer
     {
         if (currentMemory > _lastMemoryUsage * 1.2)
         {
-            _logger.LogWarning("Memory usage increased significantly: {CurrentMemory} MB", currentMemory);
+            logger.LogWarning("Memory usage increased significantly: {CurrentMemory} MB", currentMemory);
         }
         _lastMemoryUsage = currentMemory;
     }
@@ -93,7 +138,7 @@ public class ResourceMonitorService(ILogger<ResourceMonitorService> logger, ISer
     {
         try
         {
-            var globalMusicService = _serviceProvider.GetService<GlobalMusicService>();
+            var globalMusicService = serviceProvider.GetService<GuildAudioInstanceOrchestrator>();
             return globalMusicService?.NumberOfActiveManagers ?? 0;
         }
         catch
@@ -106,7 +151,7 @@ public class ResourceMonitorService(ILogger<ResourceMonitorService> logger, ISer
     {
         try
         {
-            var resolvers = _serviceProvider.GetServices<IMediaResolver>();
+            var resolvers = serviceProvider.GetServices<IMediaResolver>();
             var resolverList = resolvers
                 .OrderBy(r => r.Priority)
                 .Select(r => $"                     [{r.Priority}] {r.Name}")
@@ -118,7 +163,7 @@ public class ResourceMonitorService(ILogger<ResourceMonitorService> logger, ISer
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get resolver information");
+            logger.LogError(ex, "Failed to get resolver information");
             return "                     Error retrieving resolvers";
         }
     }
@@ -127,7 +172,7 @@ public class ResourceMonitorService(ILogger<ResourceMonitorService> logger, ISer
     {
         try
         {
-            var globalMusicService = _serviceProvider.GetService<GlobalMusicService>();
+            var globalMusicService = serviceProvider.GetService<GuildAudioInstanceOrchestrator>();
             if (globalMusicService == null)
                 return "                     No global music service available";
 
@@ -162,7 +207,7 @@ public class ResourceMonitorService(ILogger<ResourceMonitorService> logger, ISer
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get stream information");
+            logger.LogError(ex, "Failed to get stream information");
             return "                     Error retrieving stream info";
         }
     }
@@ -170,7 +215,7 @@ public class ResourceMonitorService(ILogger<ResourceMonitorService> logger, ISer
     private string GetResolverUsedForSong(IVideo song)
     {
         // Determine resolver based on song type/URL
-        if (song is CustomSong customSong)
+        if (song is MusicTrack customSong)
         {
             var url = customSong.Url;
             

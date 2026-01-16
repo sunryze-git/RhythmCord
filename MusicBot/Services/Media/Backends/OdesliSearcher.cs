@@ -1,9 +1,7 @@
 // OdesliSearcher
 // This is a static class that is able to convert songs between different music services.
 
-using System.Net.Http;
 using System.Text.Json;
-using System.Threading.Tasks;
 
 namespace MusicBot.Services.Media.Backends;
 

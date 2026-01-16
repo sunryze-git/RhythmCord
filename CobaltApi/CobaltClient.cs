@@ -1,6 +1,5 @@
 using System.Net.Http.Headers;
 using Newtonsoft.Json;
-using System.Net.Http;
 
 namespace CobaltApi;
 
@@ -22,7 +21,7 @@ public class CobaltClient(string instanceUrl)
 
     public async Task<VideoResponse> GetCobaltResponseAsync(string targetUrl)
     {
-        using var request = BuildRequest(new Request { url = targetUrl });
+        using var request = BuildRequest(new Request(targetUrl));
         using var response = await _client.SendAsync(request);
         response.EnsureSuccessStatusCode();
         return await HandleResponseAsync(response);
@@ -44,13 +43,13 @@ public class CobaltClient(string instanceUrl)
         return stream;
     }
     
-    private static StringContent BuildRequestContent(Request request)
+    internal static StringContent BuildRequestContent(Request request)
     {
         var json = JsonConvert.SerializeObject(request);
         return new StringContent(json, System.Text.Encoding.UTF8, "application/json");
     }
 
-    private static HttpRequestMessage BuildRequest(Request request)
+    internal static HttpRequestMessage BuildRequest(Request request)
     {
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/");
         httpRequest.Content = BuildRequestContent(request);
@@ -58,7 +57,7 @@ public class CobaltClient(string instanceUrl)
         return httpRequest;
     }
     
-    private static async Task<VideoResponse> HandleResponseAsync(HttpResponseMessage response)
+    internal static async Task<VideoResponse> HandleResponseAsync(HttpResponseMessage response)
     {
         var json = await response.Content.ReadAsStringAsync();
         var initialResult = JsonConvert.DeserializeObject<Response>(json);

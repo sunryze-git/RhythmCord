@@ -7,6 +7,7 @@
 
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Web;
 using Microsoft.Extensions.Logging;
 using MusicBot.Services.Media.Backends;
 using MusicBot.Utilities;
@@ -22,6 +23,7 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
         "soundcloud.com", "on.soundcloud.com", "m.soundcloud.com"
     };
 
+    public bool Enabled => true;
     public string Name => "SoundCloudNative";
     public int Priority => 1;
     public Task<bool> CanResolveAsync(string query)
@@ -32,7 +34,7 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
         return Task.FromResult(SoundCloudHosts.Contains(uri.Host));
     }
 
-    public async Task<IReadOnlyList<CustomSong>> ResolveAsync(string query)
+    public async Task<IReadOnlyList<MusicTrack>> ResolveAsync(string query)
     {
         try
         {
@@ -60,7 +62,7 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
             var thumbnailUrl = GetBestThumbnailUrl(trackInfo.ArtworkUrl);
             var duration = trackInfo.Duration > 0 ? TimeSpan.FromMilliseconds(trackInfo.Duration) : (TimeSpan?)null;
 
-            return new List<CustomSong>
+            return new List<MusicTrack>
             {
                 new(query,
                     query,
@@ -78,7 +80,7 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
         }
     }
 
-    public async Task<Stream> GetStreamAsync(CustomSong video)
+    public async Task<Stream> GetStreamAsync(MusicTrack video)
     {
         if (video.Source != SongSource.SoundCloud)
             throw new Exception($"Cannot stream non-SoundCloud song with SoundcloudResolver: {video.Title}");
@@ -99,7 +101,7 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
         return await client.GetStreamAsync(streamUrl);
     }
 
-    public Task<bool> CanGetStreamAsync(CustomSong video)
+    public Task<bool> CanGetStreamAsync(MusicTrack video)
     {
         // We can get a stream for any valid SoundCloud track
         return Task.FromResult(video.Source == SongSource.SoundCloud);
@@ -142,7 +144,7 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
         try
         {
             var resolveUrl = new UriBuilder("https://api-v2.soundcloud.com/resolve");
-            var query = System.Web.HttpUtility.ParseQueryString(string.Empty);
+            var query = HttpUtility.ParseQueryString(string.Empty);
             query["url"] = url;
             query["client_id"] = clientId;
             resolveUrl.Query = query.ToString();
@@ -298,7 +300,7 @@ public class SoundcloudResolver(HttpClient client, ILogger<SoundcloudResolver> l
                 selectedStream.Preset, selectedStream.Format?.Protocol);
             
             var fileUrl = new UriBuilder(selectedStream.Url);
-            var query = System.Web.HttpUtility.ParseQueryString(fileUrl.Query);
+            var query = HttpUtility.ParseQueryString(fileUrl.Query);
             query["client_id"] = clientId;
             if (!string.IsNullOrEmpty(track.TrackAuthorization))
             {

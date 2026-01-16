@@ -1,17 +1,16 @@
 using System.Collections.Immutable;
 using MusicBot.Utilities;
-using YoutubeExplode.Videos;
 
 namespace MusicBot.Services.Queue;
 
 public class QueueManager
 {
-    private readonly List<CustomSong> _songQueue = [];
+    private readonly List<MusicTrack> _songQueue = [];
 
-    public ImmutableList<CustomSong> SongQueue => _songQueue.ToImmutableList();
-    public CustomSong? CurrentSong => _songQueue.FirstOrDefault();
+    public ImmutableList<MusicTrack> SongQueue => _songQueue.ToImmutableList();
+    public MusicTrack? CurrentSong => _songQueue.FirstOrDefault();
     
-    public void AddSong(CustomSong song, bool playNext = false)
+    public void AddSong(MusicTrack song, bool playNext = false)
     {
         if (playNext)
         {
@@ -23,7 +22,7 @@ public class QueueManager
         }
     }
     
-    public void AddSong(IEnumerable<CustomSong> songs, bool playNext = false)
+    public void AddSong(IEnumerable<MusicTrack> songs, bool playNext = false)
     {
         if (playNext)
         {

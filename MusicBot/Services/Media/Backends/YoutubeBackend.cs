@@ -3,6 +3,7 @@ using YoutubeExplode;
 using YoutubeExplode.Common;
 using YoutubeExplode.Playlists;
 using YoutubeExplode.Videos;
+using YoutubeExplode.Videos.Streams;
 
 namespace MusicBot.Services.Media.Backends;
 
@@ -69,7 +70,7 @@ public class YoutubeBackend(ILogger<YoutubeBackend> logger)
     internal async Task<Stream> GetStreamAsync(Video video)
     {
         logger.LogInformation("Getting stream for video: {Title}", video.Title);
-        YoutubeExplode.Videos.Streams.AudioOnlyStreamInfo? bestAudio = null;
+        AudioOnlyStreamInfo? bestAudio = null;
         try
         {
             // Use async enumerator to get the best audio stream as quickly as possible

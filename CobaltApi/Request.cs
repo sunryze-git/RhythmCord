@@ -1,29 +1,40 @@
 namespace CobaltApi;
 
-public class Request
+public class Request(
+    string url,
+    string audioBitrate = "128",
+    string audioFormat = "mp3",
+    string downloadMode = "audio",
+    string filenameStyle = "basic",
+    string videoQuality = "144",
+    bool disableMetadata = false,
+    bool alwaysProxy = false,
+    bool localProcessing = true,
+    bool youtubeBetterAudio = true
+    )
 {
-    public string url { get; set; }
-    public string audioBitrate { get; set; } = "128";
-    public string audioFormat { get; set; } = "mp3";
-    public string downloadMode { get; set; } = "audio";
-    public string filenameStyle { get; set; } = "basic";
-    public string videoQuality { get; set; } = "144";
-    public bool disableMetadata { get; set; } = false;
-    public bool alwaysProxy { get; set; } = false;
-    public bool localProcessing { get; set; } = true;
-    public bool youtubeBetterAudio { get; set; } = true;
+    public string Url { get; } = url ?? throw new ArgumentNullException(nameof(url));
+    public string AudioBitrate { get; } = audioBitrate;
+    public string AudioFormat { get; } = audioFormat;
+    public string DownloadMode { get; } = downloadMode;
+    public string FilenameStyle { get; } = filenameStyle;
+    public string VideoQuality { get; } = videoQuality;
+    public bool DisableMetadata { get; } = disableMetadata;
+    public bool AlwaysProxy { get; } = alwaysProxy;
+    public bool LocalProcessing { get; } = localProcessing;
+    public bool YoutubeBetterAudio { get; } = youtubeBetterAudio;
     
-    public override string ToString()
-    {
-        return $"Request to URL: {url}\n" +
-               $"Audio Bitrate: {audioBitrate}\n" +
-               $"Audio Format: {audioFormat}\n" +
-               $"Download Mode: {downloadMode}\n" +
-               $"Filename Style: {filenameStyle}\n" +
-               $"Video Quality: {videoQuality}\n" +
-               $"Disable Metadata: {disableMetadata}\n" +
-               $"Always Proxy: {alwaysProxy}\n" +
-               $"Local Processing: {localProcessing}\n" +
-               $"YouTube Better Audio: {youtubeBetterAudio}";
-    }
+    public override string ToString() =>
+        $"""
+         Request to URL: {Url}
+                 Audio Bitrate: {AudioBitrate}
+                 Audio Format: {AudioFormat}
+                 Download Mode: {DownloadMode}
+                 Filename Style: {FilenameStyle}
+                 Video Quality: {VideoQuality}
+                 Disable Metadata: {DisableMetadata}
+                 Always Proxy: {AlwaysProxy}
+                 Local Processing: {LocalProcessing}
+                 YouTube Better Audio: {YoutubeBetterAudio}
+         """;
 }

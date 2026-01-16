@@ -29,7 +29,7 @@ public class BasicCommands : ApplicationCommandModule<ApplicationCommandContext>
             Description = "This is a test embed description.",
             Thumbnail = new EmbedThumbnailProperties("https://media.istockphoto.com/id/187722063/photo/funny-man-with-watermelon-helmet-and-goggles.jpg?s=612x612&w=0&k=20&c=gRAm8vtLqdOU8a-mJVt6m_Wnv8pLpa3TBh2vRQP4208=")
         };
-        var message = new InteractionMessageProperties()
+        var message = new InteractionMessageProperties
         {
             Content = "This is a test embed message.",
             Embeds = [embedProperties]

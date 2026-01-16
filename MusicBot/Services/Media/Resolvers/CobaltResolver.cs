@@ -8,7 +8,8 @@ public class CobaltResolver(CobaltClient cobaltClient, ILogger<CobaltResolver> l
 {
     public string Name => "Cobalt";
     public int Priority => 97;
-    
+    public bool Enabled => false;
+
     // Cobalt only supports direct URLs that are not files.
     public Task<bool> CanResolveAsync(string query)
     {
@@ -18,14 +19,14 @@ public class CobaltResolver(CobaltClient cobaltClient, ILogger<CobaltResolver> l
         return Task.FromResult(!uri.IsFile); // Cobalt only resolves URLs, not files
     }
 
-    public async Task<IReadOnlyList<CustomSong>> ResolveAsync(string query)
+    public async Task<IReadOnlyList<MusicTrack>> ResolveAsync(string query)
     {
         try
         {
-            var request = new Request { url = query, audioFormat = "aac" };
+            var request = new Request(query, audioFormat: "best");
             var video = await cobaltClient.GetCobaltResponseAsync(request);
             
-            return new List<CustomSong> 
+            return new List<MusicTrack> 
             { 
                 new(query, query, video.Title, video.Artist, TimeSpan.Zero, string.Empty, SongSource.Cobalt) 
             };
@@ -37,16 +38,16 @@ public class CobaltResolver(CobaltClient cobaltClient, ILogger<CobaltResolver> l
         }
     }
 
-    public async Task<Stream> GetStreamAsync(CustomSong video)
+    public async Task<Stream> GetStreamAsync(MusicTrack video)
     {
         if (video.Source is not SongSource.Cobalt and not SongSource.YouTube and not SongSource.SoundCloud)
             throw new Exception($"Cannot stream non-Cobalt song with CobaltResolver: {video.Title}");
-        var request = new Request { url = video.Url, audioFormat = "best" };
+        var request = new Request(video.Url, audioFormat: "best");
         var videoInfo = await cobaltClient.GetCobaltResponseAsync(request);
         return await cobaltClient.GetTunnelStreamAsync(videoInfo);
     }
 
-    public async Task<bool> CanGetStreamAsync(CustomSong video)
+    public async Task<bool> CanGetStreamAsync(MusicTrack video)
     {
         return await Task.FromResult(video.Source is SongSource.Cobalt or SongSource.YouTube or SongSource.SoundCloud);
     }

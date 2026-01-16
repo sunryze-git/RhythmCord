@@ -21,12 +21,18 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
             await ModifyResponseAsync(message => message.Content = "You are not in a voice channel.");
             return;
         }
+
+        if (!PermissionToJoin())
+        {
+            await ModifyResponseAsync(message => message.Content = "I do not have permission to join your voice channel.");
+            return;
+        }
         
         try
         {
             var manager = GetManager();
             
-            var song = await manager.PlaybackHandler.AddSongAsync(query, insertNext, Context);
+            var song = await manager.EnqueueSongAsync(query, insertNext);
             var embed = new EmbedProperties
             {
                 Title = "Added to Queue",
@@ -241,9 +247,9 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
         await RespondAsync(InteractionCallback.Message(properties));
     }
 
-    private GuildMusicService GetManager()
+    private GuildAudioInstance GetManager()
     {
-        var globalService = MusicBot.Services!.GetRequiredService<GlobalMusicService>();
+        var globalService = MusicBot.Services!.GetRequiredService<GuildAudioInstanceOrchestrator>();
         return globalService.GetOrCreateManager(Context);
     }
 
@@ -253,8 +259,21 @@ public class MusicCommands : ApplicationCommandModule<ApplicationCommandContext>
     private bool SelfInVoiceChannel()
     {
         // we can assume if the guild has a music service, it is probably in use!
-        var globalService = MusicBot.Services!.GetRequiredService<GlobalMusicService>();
+        var globalService = MusicBot.Services!.GetRequiredService<GuildAudioInstanceOrchestrator>();
         return globalService.GuildIsActive(Context.Guild!.Id);
+    }
+
+    private bool PermissionToJoin()
+    {
+        var target = Context.Guild!.VoiceStates[Context.User.Id];
+        var botGuildUser = Context.Guild.Users
+            .Where(x => x.Value.Id == Context.Client.Id)
+            .Select(x => x.Value)
+            .FirstOrDefault();
+        if (botGuildUser == null) 
+            throw new InvalidOperationException("Could not determine bot's guild user.");
+        var botPermissions = botGuildUser.GetChannelPermissions(Context.Guild, (ulong)target.ChannelId!);
+        return botPermissions.HasFlag(Permissions.Connect);
     }
 
     private bool CheckVoiceChannelStatus()

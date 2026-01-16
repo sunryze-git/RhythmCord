@@ -14,8 +14,8 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
     private TimeSpan _currentSongPosition;
     private DateTime _playbackStartTime;
     private TimeSpan _totalFrameDuration;
-    
-    internal float Volume { get; set; } = 0.5f;
+
+    private static float Volume => 0.5f;
 
     internal TimeSpan CurrentSongLength 
     { 
@@ -101,8 +101,7 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
             AVChannelLayout outLayout = default;
             byte** convertedData = null;
             byte* buffer = null;
-            int res; // common return value for FFmpeg functions
-            
+
             var inHandle = GCHandle.Alloc(inStream);
             try
             {
@@ -114,6 +113,9 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                 ffmpeg.av_dict_set(&opts, "probesize", "32", 0);
                 ffmpeg.av_dict_set(&opts, "analyzeduration", "1000000", 0);
                 ffmpeg.av_dict_set(&opts, "err_detect", "ignore_err", 0);
+                ffmpeg.av_dict_set(&opts, "dn", "1", 0);
+                ffmpeg.av_dict_set(&opts, "sn", "1", 0);
+                ffmpeg.av_dict_set(&opts, "ignore_unknown", "1", 0);
 
                 const int bufferSize = 4096;
                 buffer = (byte*)ffmpeg.av_malloc(bufferSize);
@@ -141,7 +143,7 @@ public class AudioServiceNative(ILogger<AudioServiceNative> logger)
                 formatCtx->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO | ffmpeg.AVFMT_FLAG_NOBUFFER;
                 formatCtx->error_recognition = 0;
 
-                res = ffmpeg.avformat_open_input(&formatCtx, null, null, &opts);
+                var res = ffmpeg.avformat_open_input(&formatCtx, null, null, &opts); // common return value for FFmpeg functions
                 if (res != 0)
                 {
                     formatCtx = null;

@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
-using System.Net;
 using Microsoft.Extensions.Logging;
 using MusicBot.Exceptions;
 using MusicBot.Records;
@@ -31,7 +30,7 @@ public class DlpBackend(ILogger<DlpBackend> logger)
         }
     }
     
-    internal async Task<ImmutableArray<CustomSong>> GetMetadataAsync(string url)
+    internal async Task<ImmutableArray<MusicTrack>> GetMetadataAsync(string url)
     {
         var argument = $"{url} {MetadataFlags}";
 
@@ -58,7 +57,7 @@ public class DlpBackend(ILogger<DlpBackend> logger)
                         ? TimeSpan.FromSeconds(song.Duration.Value)
                         : TimeSpan.Zero;
                     var thumbnailUrl = thumbnails.FirstOrDefault()?.Url ?? string.Empty;
-                    return new CustomSong(
+                    return new MusicTrack(
                         url,
                         song.Url,
                         song.Title,
