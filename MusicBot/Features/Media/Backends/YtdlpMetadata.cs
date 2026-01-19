@@ -1,94 +1,94 @@
-﻿using Newtonsoft.Json;
+﻿using System.Text.Json.Serialization;
 
 namespace MusicBot.Features.Media.Backends;
 
 public record Song(
-    [property: JsonProperty("_type")] string Type,
-    [property: JsonProperty("ie_key")] string IeKey,
-    [property: JsonProperty("id")] string Id,
-    [property: JsonProperty("url")] string Url,
-    [property: JsonProperty("title")] string Title,
-    [property: JsonProperty("description")]
+    [property: JsonPropertyName("_type")] string Type,
+    [property: JsonPropertyName("ie_key")] string IeKey,
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("url")] string Url,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("description")]
     object Description,
-    [property: JsonProperty("duration")] float? Duration,
-    [property: JsonProperty("channel_id")] string ChannelId,
-    [property: JsonProperty("channel")] string Channel,
-    [property: JsonProperty("channel_url")]
+    [property: JsonPropertyName("duration")] float? Duration,
+    [property: JsonPropertyName("channel_id")] string ChannelId,
+    [property: JsonPropertyName("channel")] string Channel,
+    [property: JsonPropertyName("channel_url")]
     string ChannelUrl,
-    [property: JsonProperty("uploader")] string Uploader,
-    [property: JsonProperty("uploader_id")]
+    [property: JsonPropertyName("uploader")] string Uploader,
+    [property: JsonPropertyName("uploader_id")]
     string UploaderId,
-    [property: JsonProperty("uploader_url")]
+    [property: JsonPropertyName("uploader_url")]
     string UploaderUrl,
-    [property: JsonProperty("thumbnails")] IReadOnlyList<Thumbnail>? Thumbnails,
-    [property: JsonProperty("timestamp")] object Timestamp,
-    [property: JsonProperty("release_timestamp")]
+    [property: JsonPropertyName("thumbnails")] IReadOnlyList<Thumbnail>? Thumbnails,
+    [property: JsonPropertyName("timestamp")] object Timestamp,
+    [property: JsonPropertyName("release_timestamp")]
     object ReleaseTimestamp,
-    [property: JsonProperty("availability")]
+    [property: JsonPropertyName("availability")]
     object Availability,
-    [property: JsonProperty("view_count")] int? ViewCount,
-    [property: JsonProperty("live_status")]
+    [property: JsonPropertyName("view_count")] int? ViewCount,
+    [property: JsonPropertyName("live_status")]
     object LiveStatus,
-    [property: JsonProperty("channel_is_verified")]
+    [property: JsonPropertyName("channel_is_verified")]
     object ChannelIsVerified,
-    [property: JsonProperty("__x_forwarded_for_ip")]
+    [property: JsonPropertyName("__x_forwarded_for_ip")]
     object XForwardedForIp,
-    [property: JsonProperty("webpage_url")]
+    [property: JsonPropertyName("webpage_url")]
     string WebpageUrl,
-    [property: JsonProperty("original_url")]
+    [property: JsonPropertyName("original_url")]
     string OriginalUrl,
-    [property: JsonProperty("webpage_url_basename")]
+    [property: JsonPropertyName("webpage_url_basename")]
     string WebpageUrlBasename,
-    [property: JsonProperty("webpage_url_domain")]
+    [property: JsonPropertyName("webpage_url_domain")]
     string WebpageUrlDomain,
-    [property: JsonProperty("extractor")] string Extractor,
-    [property: JsonProperty("extractor_key")]
+    [property: JsonPropertyName("extractor")] string Extractor,
+    [property: JsonPropertyName("extractor_key")]
     string ExtractorKey,
-    [property: JsonProperty("artists")] IReadOnlyList<string>? Artists,
-    [property: JsonProperty("playlist_count")]
+    [property: JsonPropertyName("artists")] IReadOnlyList<string>? Artists,
+    [property: JsonPropertyName("playlist_count")]
     int? PlaylistCount,
-    [property: JsonProperty("playlist")] string Playlist,
-    [property: JsonProperty("playlist_id")]
+    [property: JsonPropertyName("playlist")] string Playlist,
+    [property: JsonPropertyName("playlist_id")]
     string PlaylistId,
-    [property: JsonProperty("playlist_title")]
+    [property: JsonPropertyName("playlist_title")]
     string PlaylistTitle,
-    [property: JsonProperty("playlist_uploader")]
+    [property: JsonPropertyName("playlist_uploader")]
     string PlaylistUploader,
-    [property: JsonProperty("playlist_uploader_id")]
+    [property: JsonPropertyName("playlist_uploader_id")]
     string PlaylistUploaderId,
-    [property: JsonProperty("playlist_channel")]
+    [property: JsonPropertyName("playlist_channel")]
     string? PlaylistChannel,
-    [property: JsonProperty("playlist_channel_id")]
+    [property: JsonPropertyName("playlist_channel_id")]
     string? PlaylistChannelId,
-    [property: JsonProperty("playlist_webpage_url")]
+    [property: JsonPropertyName("playlist_webpage_url")]
     string PlaylistWebpageUrl,
-    [property: JsonProperty("n_entries")] int? NEntries,
-    [property: JsonProperty("playlist_index")]
+    [property: JsonPropertyName("n_entries")] int? NEntries,
+    [property: JsonPropertyName("playlist_index")]
     int? PlaylistIndex,
-    [property: JsonProperty("__last_playlist_index")]
+    [property: JsonPropertyName("__last_playlist_index")]
     int? LastPlaylistIndex,
-    [property: JsonProperty("playlist_autonumber")]
+    [property: JsonPropertyName("playlist_autonumber")]
     int? PlaylistAutonumber,
-    [property: JsonProperty("epoch")] int? Epoch,
-    [property: JsonProperty("duration_string")]
+    [property: JsonPropertyName("epoch")] int? Epoch,
+    [property: JsonPropertyName("duration_string")]
     string DurationString,
-    [property: JsonProperty("release_year")]
+    [property: JsonPropertyName("release_year")]
     object? ReleaseYear,
-    [property: JsonProperty("_version")] Version Version
+    [property: JsonPropertyName("_version")] Version Version
 );
 
 public record Thumbnail(
-    [property: JsonProperty("url")] string Url,
-    [property: JsonProperty("height")] int? Height,
-    [property: JsonProperty("width")] int? Width,
-    [property: JsonProperty("preference")] int? Preference
+    [property: JsonPropertyName("url")] string Url,
+    [property: JsonPropertyName("height")] int? Height,
+    [property: JsonPropertyName("width")] int? Width,
+    [property: JsonPropertyName("preference")] int? Preference
 );
 
 public record Version(
-    [property: JsonProperty("version")] string Ver,
-    [property: JsonProperty("current_git_head")]
+    [property: JsonPropertyName("version")] string Ver,
+    [property: JsonPropertyName("current_git_head")]
     object CurrentGitHead,
-    [property: JsonProperty("release_git_head")]
+    [property: JsonPropertyName("release_git_head")]
     string ReleaseGitHead,
-    [property: JsonProperty("repository")] string Repository
+    [property: JsonPropertyName("repository")] string Repository
 );
