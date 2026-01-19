@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using MusicBot.Configuration;
 using MusicBot.Features;
 using MusicBot.Features.Audio;
+using MusicBot.Features.Commands;
 using MusicBot.Features.Media;
 using MusicBot.Features.Media.Backends;
 using MusicBot.Features.Media.Resolvers;
@@ -14,7 +15,6 @@ using MusicBot.Infrastructure;
 
 using NetCord;
 using NetCord.Hosting.Gateway;
-using NetCord.Hosting.Services;
 using NetCord.Hosting.Services.ApplicationCommands;
 using NetCord.Services.ApplicationCommands;
 
@@ -76,7 +76,8 @@ public abstract class Program
 
         // Register Commands
         // Add modules from the current assembly
-        host.AddModules(typeof(Program).Assembly);
+        host.AddApplicationCommandModule<FunCommands>();
+        host.AddApplicationCommandModule<MusicCommands>();
 
         await host.RunAsync();
     }
