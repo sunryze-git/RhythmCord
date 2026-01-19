@@ -1,0 +1,54 @@
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+charset = utf-8
+
+[*.cs]
+# --- Modern C# 14 Preferences ---
+csharp_style_prefer_primary_constructors = true:suggestion
+csharp_style_namespace_declarations = file_scoped:force
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_constructors = false:silent
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+
+# --- Formatting ---
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_space_around_binary_operators = before_and_after
+
+# --- Naming Conventions ---
+# Interfaces must start with I
+dotnet_naming_rule.interface_should_be_begun_with_i.severity = suggestion
+dotnet_naming_rule.interface_should_be_begun_with_i.symbols = interface_symbols
+dotnet_naming_rule.interface_should_be_begun_with_i.style = begun_with_i_style
+
+dotnet_naming_symbols.interface_symbols.applicable_kinds = interface
+dotnet_naming_style.begun_with_i_style.required_prefix = I
+dotnet_naming_style.begun_with_i_style.capitalization = pascal_case
+
+# Private fields should start with _
+dotnet_naming_rule.private_members_with_underscore.symbols = private_fields
+dotnet_naming_rule.private_members_with_underscore.style = prefix_underscore
+dotnet_naming_rule.private_members_with_underscore.severity = suggestion
+
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.prefix_underscore.required_prefix = _
+dotnet_naming_style.prefix_underscore.capitalization = camel_case
+
+dotnet_naming_rule.parameters_should_be_camel_case.severity = suggestion
+dotnet_naming_rule.parameters_should_be_camel_case.symbols = parameter_symbols
+dotnet_naming_rule.parameters_should_be_camel_case.style = camel_case_style
+
+dotnet_naming_symbols.parameter_symbols.applicable_kinds = parameter
+dotnet_naming_style.camel_case_style.capitalization = camel_case
+
+# --- Using directives ---
+dotnet_separate_import_directive_groups = true
+dotnet_sort_system_directives_first = true

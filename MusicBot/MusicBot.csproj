@@ -1,76 +1,54 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <PublishAot>false</PublishAot>
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
-    <!-- Multi-RID support -->
-    <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+        <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
 
-    <!-- Defaults for publish to bundle as much as possible into a single executable. -->
-    <!-- Note: trimming can break reflection/native interop; test thoroughly. -->
-    <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>true</SelfContained>
-    <PublishTrimmed>false</PublishTrimmed>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-    <IncludeAllContentForSelfExtract>false</IncludeAllContentForSelfExtract>
-    <!-- ReadyToRun can improve startup at the cost of size; enable per-platform if desired. -->
-    <PublishReadyToRun>false</PublishReadyToRun>
-  </PropertyGroup>
+        <PublishSingleFile>true</PublishSingleFile>
+        <SelfContained>true</SelfContained>
+        <PublishTrimmed>true</PublishTrimmed>
+        <TrimMode>link</TrimMode>
+        <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+        <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
+        <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+        <LangVersion>14</LangVersion>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Asyncify" Version="0.9.7" />
-    <PackageReference Include="DisableDateTimeNow" Version="1.0.5883.39470" />
-    <PackageReference Include="FFmpeg.AutoGen" Version="7.1.1" />
-    <PackageReference Include="FFmpeg.Loader" Version="3.0.2" />
-    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="9.0.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.3" />
-    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="17.14.15">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="NetCord" Version="1.0.0-alpha.364" />
-    <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.364" />
-    <PackageReference Include="NetCord.Hosting.Services" Version="1.0.0-alpha.364" />
-    <PackageReference Include="NetCord.Services" Version="1.0.0-alpha.364" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="YoutubeExplode" Version="6.5.6" />
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="FFmpeg.AutoGen" Version="7.1.1"/>
+        <PackageReference Include="FFmpeg.Loader" Version="3.0.2"/>
+        <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.2"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.2"/>
+        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.2"/>
+        <PackageReference Include="NetCord" Version="1.0.0-alpha.455"/>
+        <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.455"/>
+        <PackageReference Include="NetCord.Hosting.Services" Version="1.0.0-alpha.455"/>
+        <PackageReference Include="NetCord.Services" Version="1.0.0-alpha.455"/>
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.5-beta1"/>
+        <PackageReference Include="YoutubeExplode" Version="6.5.6"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\CobaltApi\CobaltApi.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\CobaltApi\CobaltApi.csproj"/>
+    </ItemGroup>
 
-  <!-- Always include native library folders for both platforms in build and publish outputs -->
-  <ItemGroup>
-    <Content Include="Libraries\windows\bin\**">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-      <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
-    </Content>
-    <Content Include="Libraries\linux\bin\**">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-      <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
-    </Content>
-  </ItemGroup>
+    <ItemGroup>
+        <Content Include="Libraries\linux\bin\**">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+        </Content>
+        <None Update="appsettings.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
 
-  <!-- Convenience target to publish both Linux and Windows single-file builds into publish/linux and publish/windows -->
-  <!-- NOTE: This target was previously bound to run after every Build (AfterTargets="Build"), which caused a publish loop. -->
-  <!-- It is now a standalone target that must be invoked explicitly: dotnet msbuild -t:PublishAll -->
-  <Target Name="PublishAll">
-    <Message Text="Publishing Linux (linux-x64) single-file..." Importance="high" />
-    <Exec Command="dotnet publish &quot;$(MSBuildProjectFullPath)&quot; -c Release -r linux-x64 --self-contained true /p:PublishSingleFile=true /p:PublishTrimmed=true /p:EnableCompressionInSingleFile=true /p:PublishDir=&quot;$(MSBuildProjectDirectory)\publish\linux\&quot;" />
-
-    <Message Text="Publishing Windows (win-x64) single-file..." Importance="high" />
-    <Exec Command="dotnet publish &quot;$(MSBuildProjectFullPath)&quot; -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:PublishTrimmed=true /p:EnableCompressionInSingleFile=true /p:EnableCompressionInSingleFile=true /p:PublishDir=&quot;$(MSBuildProjectDirectory)\publish\windows\&quot;" />
-  </Target>
+    <ItemGroup>
+        <Folder Include="Utilities\"/>
+    </ItemGroup>
 
 </Project>

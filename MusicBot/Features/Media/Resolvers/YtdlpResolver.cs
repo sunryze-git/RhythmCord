@@ -1,0 +1,33 @@
+using MusicBot.Features.Media.Backends;
+using MusicBot.Infrastructure;
+
+namespace MusicBot.Features.Media.Resolvers;
+
+public class YtdlpResolver(DlpBackend dlpService) : IMediaResolver
+{
+    public bool Enabled => true;
+    public string Name => "YT-DLP";
+    public int Priority => 99;
+
+    public Task<bool> CanResolveAsync(string query) =>
+        Task.FromResult(Uri.IsWellFormedUriString(query, UriKind.Absolute));
+
+    public async Task<IReadOnlyList<MusicTrack>> ResolveAsync(string query)
+    {
+        var results = await dlpService.GetMetadataAsync(query);
+        // Map IVideo results to CustomSong with SongSource.Ytdlp (if it exists, else use SongSource.YouTube)
+        return results.Select(v => new MusicTrack(v, query, SongSource.YouTube)).ToList();
+    }
+
+    public Task<Stream> GetStreamAsync(MusicTrack video)
+    {
+        // Use DlpBackend to get the stream for the song's URL
+        return Task.FromResult(dlpService.GetSongStream(video.Url));
+    }
+
+    public Task<bool> CanGetStreamAsync(MusicTrack video)
+    {
+        // Only allow stream if the source is YouTube (or Ytdlp if you add it)
+        return Task.FromResult(video.Source == SongSource.YouTube);
+    }
+}
