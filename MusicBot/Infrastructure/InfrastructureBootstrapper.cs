@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-
+using FFmpeg.Loader;
 using NetCord.Gateway.Voice;
 
 namespace MusicBot.Infrastructure;
@@ -13,10 +13,22 @@ public static class InfrastructureBootstrapper
 
     internal static void Initialize()
     {
+        LoadFfmpegLibraries();
         if (!CheckOpusLibrary())
             throw new DllNotFoundException(
                 "Required native library 'libopus' was not found. Please install libopus (for Debian/Ubuntu: 'apt install libopus0').");
         RegisterOpusDllImportResolver();
+    }
+
+    private static void LoadFfmpegLibraries()
+    {
+        var search = FFmpegLoader.SearchPaths("/usr/lib64")
+            .ThenSearchSystem()
+            .ThenSearchApplication()
+            .ThenSearchEnvironmentPaths("LD_LIBRARY_PATH");
+        search.Load("avcodec");
+        search.Load("avformat");
+        search.Load("swresample");
     }
 
     // Check for libopus presence on Linux by attempting to load common sonames and probing common library locations.
