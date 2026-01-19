@@ -216,7 +216,7 @@ public partial class SoundcloudResolver(HttpClient client, ILogger<SoundcloudRes
                 var match = ClientIdRegex().Match(scriptContent);
                 if (!match.Success)
                 {
-                    // If the script is large but contains the word "client_id", 
+                    // If the script is large but contains the word "client_id",
                     // let's see the context of why the regex failed.
                     if (scriptContent.Contains("client_id", StringComparison.OrdinalIgnoreCase))
                     {
