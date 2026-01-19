@@ -45,7 +45,7 @@ public class DirectFileResolver(HttpClient httpClient) : IMediaResolver
     public async Task<Stream> GetStreamAsync(MusicTrack video)
     {
         if (video.Source != SongSource.Direct)
-            throw new Exception($"Cannot stream non-direct song with DirectFileResolver: {video.Title}");
+            throw new InvalidOperationException($"Cannot stream non-direct song with DirectFileResolver: {video.Title}");
         var stream = await httpClient.GetStreamAsync(video.Url);
         return stream;
     }

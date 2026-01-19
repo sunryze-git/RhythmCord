@@ -88,7 +88,7 @@ public partial class SoundcloudResolver(HttpClient client, ILogger<SoundcloudRes
     public async Task<Stream> GetStreamAsync(MusicTrack video)
     {
         if (video.Source != SongSource.SoundCloud)
-            throw new Exception($"Cannot stream non-SoundCloud song with SoundcloudResolver: {video.Title}");
+            throw new InvalidOperationException($"Cannot stream non-SoundCloud song with SoundcloudResolver: {video.Title}");
         // Fetch the stream for the given video (CustomSong) on demand
         var clientId = await FindClientIdAsync();
         if (string.IsNullOrEmpty(clientId))

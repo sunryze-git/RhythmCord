@@ -43,7 +43,7 @@ public class CobaltResolver(CobaltClient cobaltClient, ILogger<CobaltResolver> l
     public async Task<Stream> GetStreamAsync(MusicTrack video)
     {
         if (video.Source is not SongSource.Cobalt and not SongSource.YouTube and not SongSource.SoundCloud)
-            throw new Exception($"Cannot stream non-Cobalt song with CobaltResolver: {video.Title}");
+            throw new InvalidOperationException($"Cannot stream non-Cobalt song with CobaltResolver: {video.Title}");
         var request = new Request(video.Url, audioFormat: "best");
         var videoInfo = await cobaltClient.GetCobaltResponseAsync(request);
         return await cobaltClient.GetTunnelStreamAsync(videoInfo);
