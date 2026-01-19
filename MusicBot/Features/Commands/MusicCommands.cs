@@ -1,3 +1,4 @@
+using MusicBot.Features.Commands.Permissions;
 using MusicBot.Infrastructure;
 
 using NetCord;
@@ -6,10 +7,10 @@ using NetCord.Services.ApplicationCommands;
 
 namespace MusicBot.Features.Commands;
 
-public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator)
-    : ApplicationCommandModule<ApplicationCommandContext>
+public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator) : ApplicationCommandModule<ApplicationCommandContext>
 {
     [SlashCommand("play", "Play a song by URL, or by a search query.")]
+    [RequireBotConnectPermission]
     public async Task PlayAsync(
         [SlashCommandParameter(Name = "query", Description = "URL or Search Query")]
         string query,
@@ -18,19 +19,6 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator)
     )
     {
         await RespondAsync(InteractionCallback.DeferredMessage());
-        if (!UserInVoiceChannel())
-        {
-            await ModifyResponseAsync(message => message.Content = "You are not in a voice channel.");
-            return;
-        }
-
-        if (!PermissionToJoin())
-        {
-            await ModifyResponseAsync(message =>
-                message.Content = "I do not have permission to join your voice channel.");
-            return;
-        }
-
         try
         {
             var manager = GetManager();
@@ -38,7 +26,7 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator)
 
             // Join Voice and enqueue song concurrently
             var song = await manager.EnqueueSongAsync(query, insertNext);
-            Thread.Sleep(500);
+            await Task.Delay(250);
             manager.PlaybackHandler.StartQueue();
 
             var embed = new EmbedProperties
@@ -65,15 +53,13 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator)
         }
     }
 
+
     [SlashCommand("stop", "Stops song playback, clears queue.")]
+    [RequireUserVoice]
+    [RequireBotInVoiceChannel]
+    [RequireSameVoiceChannel]
     public async Task StopAsync()
     {
-        if (!CheckVoiceChannelStatus())
-        {
-            await RespondAsync(InteractionCallback.Message("This command is not available."));
-            return;
-        }
-
         var manager = GetManager();
         if (manager.PlaybackHandler.Active)
         {
@@ -87,14 +73,11 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator)
     }
 
     [SlashCommand("skip", "Skips the current song.")]
+    [RequireUserVoice]
+    [RequireBotInVoiceChannel]
+    [RequireSameVoiceChannel]
     public async Task SkipAsync()
     {
-        if (!CheckVoiceChannelStatus())
-        {
-            await RespondAsync(InteractionCallback.Message("This command is not available."));
-            return;
-        }
-
         var manager = GetManager();
 
         if (manager.PlaybackHandler.Active)
@@ -109,28 +92,23 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator)
     }
 
     [SlashCommand("leave", "Leaves the VC.")]
+    [RequireUserVoice]
+    [RequireBotInVoiceChannel]
+    [RequireSameVoiceChannel]
     public async Task LeaveAsync()
     {
-        if (!CheckVoiceChannelStatus())
-        {
-            await RespondAsync(InteractionCallback.Message("This command is not available."));
-            return;
-        }
-
         await RespondAsync(InteractionCallback.Message("Bye! 👋"));
         var manager = GetManager();
         await manager.PlaybackHandler.EndAsync();
     }
 
     [SlashCommand("status", "Shows information about the current song.")]
+    [RequireUserVoice]
+    [RequireBotInVoiceChannel]
+    [RequireSameVoiceChannel]
     public async Task StatusAsync()
     {
         var ctx = Context;
-        if (!CheckVoiceChannelStatus())
-        {
-            await RespondAsync(InteractionCallback.Message("This command is not available."));
-            return;
-        }
 
         var manager = GetManager();
         var playbackHandler = manager.PlaybackHandler;
@@ -169,14 +147,11 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator)
     }
 
     [SlashCommand("loop", "Toggles looping the current playing song.")]
+    [RequireUserVoice]
+    [RequireBotInVoiceChannel]
+    [RequireSameVoiceChannel]
     public async Task LoopAsync()
     {
-        if (!CheckVoiceChannelStatus())
-        {
-            await RespondAsync(InteractionCallback.Message("This command is not available."));
-            return;
-        }
-
         var manager = GetManager();
         var song = manager.PlaybackHandler.CurrentSong;
 
@@ -193,14 +168,11 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator)
     }
 
     [SlashCommand("shuffle", "Shuffles the current queue.")]
+    [RequireUserVoice]
+    [RequireBotInVoiceChannel]
+    [RequireSameVoiceChannel]
     public async Task ShuffleAsync()
     {
-        if (!CheckVoiceChannelStatus())
-        {
-            await RespondAsync(InteractionCallback.Message("This command is not available."));
-            return;
-        }
-
         var manager = GetManager();
         if (manager.PlaybackHandler.CurrentSong == null)
         {
@@ -213,14 +185,11 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator)
     }
 
     [SlashCommand("queue", "Shows the current queue.")]
+    [RequireUserVoice]
+    [RequireBotInVoiceChannel]
+    [RequireSameVoiceChannel]
     public async Task QueueAsync()
     {
-        if (!CheckVoiceChannelStatus())
-        {
-            await RespondAsync(InteractionCallback.Message("This command is not available."));
-            return;
-        }
-
         var manager = GetManager();
         var songs = manager.PlaybackHandler.SongQueue;
 
@@ -259,24 +228,4 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator)
     }
 
     private GuildAudioInstance GetManager() => orchestrator.GetOrCreateManager(Context);
-
-    private bool UserInVoiceChannel() =>
-        Context.Guild!.VoiceStates.TryGetValue(Context.User.Id, out _);
-
-    private bool SelfInVoiceChannel() => orchestrator.GuildIsActive(Context.Guild!.Id);
-
-    private bool PermissionToJoin()
-    {
-        var target = Context.Guild!.VoiceStates[Context.User.Id];
-        var botGuildUser = Context.Guild.Users
-            .Where(x => x.Value.Id == Context.Client.Id)
-            .Select(x => x.Value)
-            .FirstOrDefault();
-        if (botGuildUser == null)
-            throw new InvalidOperationException("Could not determine bot's guild user.");
-        var botPermissions = botGuildUser.GetChannelPermissions(Context.Guild, (ulong)target.ChannelId!);
-        return botPermissions.HasFlag(Permissions.Connect);
-    }
-
-    private bool CheckVoiceChannelStatus() => UserInVoiceChannel() && SelfInVoiceChannel();
 }
