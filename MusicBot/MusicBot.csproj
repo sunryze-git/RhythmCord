@@ -37,10 +37,6 @@
     </ItemGroup>
 
     <ItemGroup>
-        <Content Include="Libraries\linux\bin\**">
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-            <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
-        </Content>
         <None Update="appsettings.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
@@ -48,6 +44,12 @@
 
     <ItemGroup>
         <Folder Include="Utilities\"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+            <_Parameter1>MusicBot.Tests</_Parameter1>
+        </AssemblyAttribute>
     </ItemGroup>
 
 </Project>
