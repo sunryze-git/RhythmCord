@@ -292,11 +292,6 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
             logger.LogError(ex, "HTTP request failed while playing song.");
             await TrySendMessageAsync("An HTTP error occurred while trying to play the song.");
         }
-        catch (InvalidAudioException ex)
-        {
-            logger.LogError(ex, "Unsupported audio format encountered while playing song.");
-            await TrySendMessageAsync($"The audio format ``{ex.AudioFormat}`` is not supported.");
-        }
         catch (ApplicationException ex)
         {
             logger.LogError(ex, "Application error occurred while playing song.");

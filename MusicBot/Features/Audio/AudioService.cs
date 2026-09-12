@@ -4,7 +4,7 @@ using NetCord.Gateway.Voice;
 
 namespace MusicBot.Features.Audio;
 
-public class AudioService(ILogger<AudioService> logger) : IDisposable
+public class AudioService(ILogger<AudioService> logger) : IAudioService
 {
     private readonly CancellationTokenSource _serviceCts = new();
 
@@ -13,13 +13,13 @@ public class AudioService(ILogger<AudioService> logger) : IDisposable
     private const int FrameDurationMs = 20;
     private const int FrameSize = SampleRate * Channels * sizeof(short) * FrameDurationMs / 1000;
 
-    internal bool Looping { get; set; }
+    public bool Looping { get; set; }
 
     private const double BytesPerSecond = SampleRate * Channels * sizeof(short);
 
     private long _consumedBytes;
 
-    internal TimeSpan Position => TimeSpan.FromTicks((long)(Volatile.Read(ref _consumedBytes) / BytesPerSecond * TimeSpan.TicksPerSecond));
+    public TimeSpan Position => TimeSpan.FromTicks((long)(Volatile.Read(ref _consumedBytes) / BytesPerSecond * TimeSpan.TicksPerSecond));
 
     public void Dispose()
     {
@@ -162,5 +162,10 @@ public class AudioService(ILogger<AudioService> logger) : IDisposable
             var errorLog = await errorTask;
             throw new InvalidOperationException($"FFmpeg process exited with code {process.ExitCode}: {errorLog}");
         }
+    }
+
+    Task IAudioService.StartAudioStreamAsync(Stream inStream, OpusEncodeStream outStream, CancellationToken stopToken, CancellationToken serviceToken)
+    {
+        return StartAudioStreamAsync(inStream, outStream, stopToken, serviceToken);
     }
 }
