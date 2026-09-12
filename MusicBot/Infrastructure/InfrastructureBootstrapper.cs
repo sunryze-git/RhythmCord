@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using FFmpeg.Loader;
 using NetCord.Gateway.Voice;
@@ -6,125 +7,47 @@ namespace MusicBot.Infrastructure;
 
 public static class InfrastructureBootstrapper
 {
-    private const int _rtldNow = 2;
-
-    [DllImport("libdl.so", EntryPoint = "dlopen")]
-    private static extern IntPtr dlopen(string fileName, int flags);
-
     internal static void Initialize()
     {
         LoadFfmpegLibraries();
-        if (!CheckOpusLibrary())
-            throw new DllNotFoundException(
-                "Required native library 'libopus' was not found. Please install libopus (for Debian/Ubuntu: 'apt install libopus0').");
         RegisterOpusDllImportResolver();
+
+        // Fail-fast check to ensure the environment is ready
+        if (!CheckOpusLibrary())
+        {
+            throw new DllNotFoundException(
+                "Required native library 'libopus' was not found. Please in(89%)stall libopus (e.g., 'apt install libopus0').");
+        }
     }
 
     private static void LoadFfmpegLibraries()
     {
-        var search = FFmpegLoader.SearchPaths("/usr/lib64")
-            .ThenSearchSystem()
-            .ThenSearchApplication()
-            .ThenSearchEnvironmentPaths("LD_LIBRARY_PATH");
-        search.Load("avcodec");
-        search.Load("avformat");
-        search.Load("swresample");
-    }
-
-    // Check for libopus presence on Linux by attempting to load common sonames and probing common library locations.
-    private static bool CheckOpusLibrary()
-    {
-        // Only enforce on Linux where sonames are consistent; on other OSes assume platform packaging handles codecs.
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            return true;
-
-        var candidates = new[] { "libopus.so.0", "libopus.so", "opus" };
-
-        // Try best-effort to load by name (relies on system loader paths)
-        foreach (var name in candidates)
-            try
-            {
-                if (!NativeLibrary.TryLoad(name, out var handle)) continue;
-                try
-                {
-                    return true;
-                }
-                finally
-                {
-                    try
-                    {
-                        NativeLibrary.Free(handle);
-                    }
-                    catch (Exception)
-                    {
-                        // ignored
-                    }
-                }
-            }
-            catch (Exception)
-            {
-                // ignored
-            }
-
-        // Search common library directories
-        var searchDirs = new[]
-        {
-            "/usr/lib", "/usr/lib64", "/usr/local/lib", "/lib", "/lib64", Directory.GetCurrentDirectory(),
-            AppContext.BaseDirectory
-        };
-        foreach (var dir in searchDirs.Distinct())
-        foreach (var name in candidates)
-        {
-            var path = Path.Combine(dir, name);
-            try
-            {
-                if (File.Exists(path) && NativeLibrary.TryLoad(path, out var handle))
-                    try
-                    {
-                        return true;
-                    }
-                    finally
-                    {
-                        try
-                        {
-                            NativeLibrary.Free(handle);
-                        }
-                        catch (Exception)
-                        {
-                            // ignored
-                        }
-                    }
-            }
-            catch
-            {
-                // ignored
-            }
-        }
-
-        // Fallback to dlopen if available (libdl)
         try
         {
-            foreach (var dir in searchDirs.Distinct())
-            foreach (var name in candidates)
+            Process.Start(new ProcessStartInfo
             {
-                var path = Path.Combine(dir, name);
-                if (!File.Exists(path))
-                    continue;
-
-                try
-                {
-                    var ptr = dlopen(path, _rtldNow);
-                    if (ptr != IntPtr.Zero) return true;
-                }
-                catch (Exception)
-                {
-                    // ignored
-                }
-            }
+                FileName = "ffmpeg",
+                Arguments = "-version",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
         }
         catch
         {
-            // ignore any dlopen/platform interop issues
+            throw new InvalidOperationException("FFmpeg executable could not be found.");
+        }
+    }
+
+    private static bool CheckOpusLibrary()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            return true;
+
+        // Simply relying on TryLoad tests the OS's native resolution paths.
+        if (NativeLibrary.TryLoad("libopus.so.0", typeof(InfrastructureBootstrapper).Assembly, DllImportSearchPath.SafeDirectories, out var handle))
+        {
+            NativeLibrary.Free(handle);
+            return true;
         }
 
         return false;
@@ -134,69 +57,24 @@ public static class InfrastructureBootstrapper
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return;
 
-        var netcordAssembly = typeof(Opus).Assembly;
-        var candidates = new[] { "libopus.so.0", "libopus.so", "opus" };
-        var searchDirs = new[]
+        NativeLibrary.SetDllImportResolver(typeof(Opus).Assembly, (libraryName, assembly, searchPath) =>
         {
-            "/usr/lib", "/usr/lib64", "/usr/local/lib", "/lib", "/lib64", Directory.GetCurrentDirectory(),
-            AppContext.BaseDirectory
-        };
-
-        NativeLibrary.SetDllImportResolver(netcordAssembly, (name, _, _) =>
-        {
-            if (!string.Equals(name, "opus", StringComparison.OrdinalIgnoreCase) &&
-                !name.StartsWith("libopus", StringComparison.OrdinalIgnoreCase))
+            // Only intercept calls looking for "opus"
+            if (!string.Equals(libraryName, "opus", StringComparison.OrdinalIgnoreCase))
+            {
                 return IntPtr.Zero;
+            }
 
-            // Try common sonames (relies on system loader)
-            foreach (var cand in candidates)
-                try
-                {
-                    if (NativeLibrary.TryLoad(cand, out var handle) && handle != IntPtr.Zero) return handle;
-                }
-                catch (Exception)
-                {
-                    // ignored
-                }
+            string[] candidates = { "libopus.so.0", "libopus.so" };
 
-            // Probe common directories for exact files (including versioned sonames)
-            foreach (var dir in searchDirs.Distinct())
-                try
+            // Let the OS dynamic linker do the work
+            foreach (var candidate in candidates)
+            {
+                if (NativeLibrary.TryLoad(candidate, assembly, searchPath, out var handle))
                 {
-                    if (!Directory.Exists(dir))
-                        continue;
-
-                    // exact candidate filenames
-                    foreach (var cand in candidates)
-                    {
-                        var pathFull = Path.Combine(dir, cand);
-                        if (File.Exists(pathFull))
-                            try
-                            {
-                                if (NativeLibrary.TryLoad(pathFull, out var handle) && handle != IntPtr.Zero)
-                                    return handle;
-                            }
-                            catch (Exception)
-                            {
-                                // ignored
-                            }
-                    }
-
-                    // versioned files like libopus.so.0.8.0
-                    foreach (var file in Directory.EnumerateFiles(dir, "libopus.so*").OrderByDescending(f => f))
-                        try
-                        {
-                            if (NativeLibrary.TryLoad(file, out var handle) && handle != IntPtr.Zero) return handle;
-                        }
-                        catch (Exception)
-                        {
-                            // ignored
-                        }
+                    return handle;
                 }
-                catch (Exception)
-                {
-                    // ignored
-                }
+            }
 
             return IntPtr.Zero;
         });

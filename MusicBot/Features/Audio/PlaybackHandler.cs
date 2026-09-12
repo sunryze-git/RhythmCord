@@ -13,12 +13,7 @@ using NetCord.Services.ApplicationCommands;
 
 namespace MusicBot.Features.Audio;
 
-public class PlaybackHandler(
-    ILogger<PlaybackHandler> logger,
-    AudioServiceNative audioService,
-    QueueManager queueManager,
-    MediaResolver mediaResolver,
-    GuildAudioInstanceOrchestrator orchestrator)
+public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audioService, QueueManager queueManager, MediaResolver mediaResolver, GuildAudioInstanceOrchestrator orchestrator)
 {
     private ApplicationCommandContext _commandContext = null!; // set during initialization
     private CancellationTokenSource? _inactivityCts;
@@ -36,8 +31,8 @@ public class PlaybackHandler(
 
     public ImmutableList<MusicTrack> SongQueue => queueManager.SongQueue;
     public MusicTrack? CurrentSong => queueManager.CurrentSong;
-    public TimeSpan Duration => audioService.CurrentSongLength;
-    public TimeSpan Position => audioService.CurrentSongPosition;
+    public TimeSpan Duration => CurrentSong?.Duration ?? TimeSpan.Zero;
+    public TimeSpan Position => audioService.Position;
     public void SkipSong() => _skipSongCts?.Cancel();
     public void SetContext(ApplicationCommandContext context) => _commandContext = context;
 
@@ -189,7 +184,7 @@ public class PlaybackHandler(
             await voiceClient.StartAsync();
             await voiceClient.EnterSpeakingStateAsync(new SpeakingProperties(SpeakingFlags.Microphone));
 
-            await using var outStream = voiceClient.CreateOutputStream();
+            await using var outStream = voiceClient.CreateVoiceStream();
             await using var opusEncodeStream =
                 new OpusEncodeStream(outStream, PcmFormat.Short, VoiceChannels.Stereo, OpusApplication.Audio);
 

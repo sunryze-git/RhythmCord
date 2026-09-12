@@ -7,9 +7,7 @@ using NetCord.Services.ApplicationCommands;
 
 namespace MusicBot.Features;
 
-public class GuildAudioInstanceOrchestrator(
-    ILogger<GuildAudioInstanceOrchestrator> logger,
-    IServiceScopeFactory scopeFactory)
+public class GuildAudioInstanceOrchestrator(ILogger<GuildAudioInstanceOrchestrator> logger, IServiceScopeFactory scopeFactory)
 {
     private readonly ConcurrentDictionary<ulong, ManagerEntry> _managers = new();
     public int NumberOfActiveManagers => _managers.Count;

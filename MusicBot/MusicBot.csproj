@@ -20,20 +20,23 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="FFmpeg.AutoGen" Version="7.1.1" />
-        <PackageReference Include="FFmpeg.Loader" Version="3.0.2"/>
-        <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.2"/>
-        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.2"/>
-        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.2"/>
-        <PackageReference Include="NetCord" Version="1.0.0-alpha.455"/>
-        <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.455"/>
-        <PackageReference Include="NetCord.Hosting.Services" Version="1.0.0-alpha.455"/>
-        <PackageReference Include="NetCord.Services" Version="1.0.0-alpha.455"/>
-        <PackageReference Include="YoutubeExplode" Version="6.5.6"/>
+        <PackageReference Include="Concentus.Oggfile" Version="1.0.7" />
+        <PackageReference Include="DisCatSharp.Voice.Natives" Version="10.7.0" />
+        <PackageReference Include="FFmpeg.AutoGen" Version="8.1.0" />
+        <PackageReference Include="FFmpeg.Loader" Version="3.0.2" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.2" />
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.2" />
+        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.2" />
+        <PackageReference Include="NetCord" Version="1.0.0-alpha.490" />
+        <PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.490" />
+        <PackageReference Include="NetCord.Hosting.Services" Version="1.0.0-alpha.490" />
+        <PackageReference Include="NetCord.Services" Version="1.0.0-alpha.490" />
+        <PackageReference Include="Sodium.Core" Version="1.4.1" />
+        <PackageReference Include="YoutubeExplode" Version="6.6.2" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\CobaltApi\CobaltApi.csproj"/>
+        <ProjectReference Include="..\CobaltApi\CobaltApi.csproj" />
     </ItemGroup>
 
     <ItemGroup>
@@ -43,7 +46,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <Folder Include="Utilities\"/>
+        <Folder Include="Utilities\" />
     </ItemGroup>
 
     <ItemGroup>

@@ -8,9 +8,7 @@ using MusicBot.Infrastructure;
 
 namespace MusicBot.Features.Media;
 
-public class MediaResolver(
-    ILogger<MediaResolver> logger,
-    IEnumerable<IMediaResolver> resolvers)
+public class MediaResolver(ILogger<MediaResolver> logger, IEnumerable<IMediaResolver> resolvers)
 {
     private static readonly HashSet<string> _unresolvableHosts = new(StringComparer.OrdinalIgnoreCase)
     {

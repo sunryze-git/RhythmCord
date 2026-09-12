@@ -11,10 +11,7 @@ using YoutubeExplode.Videos;
 
 namespace MusicBot.Features.Utility;
 
-public class ResourceMonitorService(
-    ILogger<ResourceMonitorService> logger,
-    IServiceProvider serviceProvider)
-    : BackgroundService
+public class ResourceMonitorService(ILogger<ResourceMonitorService> logger, IServiceProvider serviceProvider) : BackgroundService
 {
     private long _lastMemoryUsage = Process.GetCurrentProcess().WorkingSet64;
     internal bool IsMonitoringEnabled;

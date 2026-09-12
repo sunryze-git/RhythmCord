@@ -122,10 +122,10 @@ public partial class SoundcloudResolver(HttpClient client, ILogger<SoundcloudRes
                 .Replace("-t300x300.jpg", "-t500x500.jpg")
                 .Replace("-t120x120.jpg", "-t500x500.jpg")
                 .Replace("-small.jpg", "-t500x500.jpg") switch
-            {
-                var final when final == artworkUrl && !final.Contains('?') => $"{final}?size=500x500",
-                var final => final
-            }
+        {
+            var final when final == artworkUrl && !final.Contains('?') => $"{final}?size=500x500",
+            var final => final
+        }
     };
 
     private async Task<SoundCloudTrack?> GetTrackInfoAsync(string url, string clientId)

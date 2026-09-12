@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -44,7 +45,7 @@ public abstract class Program
         builder.Services.AddSingleton<YoutubeBackend>();
         builder.Services.AddSingleton<GuildAudioInstanceOrchestrator>();
         builder.Services.AddSingleton<DlpBackend>();
-        builder.Services.AddScoped<AudioServiceNative>();
+        builder.Services.AddScoped<AudioService>();
         builder.Services.AddScoped<GuildAudioInstance>();
         builder.Services.AddScoped<QueueManager>();
         builder.Services.AddScoped<MediaResolver>();
@@ -60,11 +61,10 @@ public abstract class Program
         // Resolvers Enumerable registration
         var conf = new ResolverSettings();
         builder.Configuration.GetSection("ResolverSettings").Bind(conf);
-        if (conf.EnableCobalt) builder.Services.AddScoped<IMediaResolver, CobaltResolver>();
-        if (conf.EnableDirect) builder.Services.AddScoped<IMediaResolver, DirectFileResolver>();
-        if (conf.EnableSoundCloud) builder.Services.AddScoped<IMediaResolver, SoundcloudResolver>();
-        if (conf.EnableYouTube) builder.Services.AddScoped<IMediaResolver, YoutubeResolver>();
-        if (conf.EnableYtdlp) builder.Services.AddScoped<IMediaResolver, YtdlpResolver>();
+        builder.Services.AddScoped<IMediaResolver, DirectFileResolver>();
+        builder.Services.AddScoped<IMediaResolver, SoundcloudResolver>();
+        builder.Services.AddScoped<IMediaResolver, YoutubeResolver>();
+        builder.Services.AddScoped<IMediaResolver, YtdlpResolver>();
 
         // Begin
         var host = builder.Build();

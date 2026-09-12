@@ -8,11 +8,9 @@ namespace MusicBot.Features.Commands;
 
 public class FunCommands(ILogger<FunCommands> logger) : ApplicationCommandModule<ApplicationCommandContext>
 {
+    // remove everyone from the VC you are in
     [SlashCommand("snap", "Administrative command only.")]
-    public async Task SnapAsync(
-            [SlashCommandParameter(Name = "channel", Description = "Target Channel ID.")]
-            string channelId)
-        // remove everyone from the VC you are in
+    public async Task SnapAsync([SlashCommandParameter(Name = "channel", Description = "Target Channel ID.")] string channelId)
     {
         await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
 

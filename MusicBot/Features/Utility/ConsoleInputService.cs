@@ -3,8 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace MusicBot.Features.Utility;
 
-public class ConsoleInputService(ILogger<ConsoleInputService> logger, ResourceMonitorService resourceMonitor)
-    : BackgroundService
+public class ConsoleInputService(ILogger<ConsoleInputService> logger, ResourceMonitorService resourceMonitor) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

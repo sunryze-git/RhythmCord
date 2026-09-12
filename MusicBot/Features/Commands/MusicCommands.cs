@@ -11,12 +11,7 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator) : Applic
 {
     [SlashCommand("play", "Play a song by URL, or by a search query.")]
     [RequireBotConnectPermission]
-    public async Task PlayAsync(
-        [SlashCommandParameter(Name = "query", Description = "URL or Search Query")]
-        string query,
-        [SlashCommandParameter(Name = "next", Description = "Insert as next in queue")]
-        bool insertNext = false
-    )
+    public async Task PlayAsync([SlashCommandParameter(Name = "query", Description = "URL or Search Query")] string query, [SlashCommandParameter(Name = "next", Description = "Insert as next in queue")] bool insertNext = false)
     {
         await RespondAsync(InteractionCallback.DeferredMessage());
         try
