@@ -51,3 +51,4 @@ artifacts/
 *.nuget.props
 *.nuget.targets
 MusicBot/appsettings.json
+MusicBot/.venv/

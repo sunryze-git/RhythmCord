@@ -7,8 +7,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MusicBot", "MusicBot\MusicB
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CobaltApi", "CobaltApi\CobaltApi.csproj", "{7E121A27-E029-42FA-9FF2-26F3C5466EA6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MusicBot.Tests", "MusicBot.Tests\MusicBot.Tests.csproj", "{97CAA6B9-1C3E-4047-BB82-33BC88DE8382}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

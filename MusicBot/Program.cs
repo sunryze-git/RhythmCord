@@ -11,7 +11,6 @@ using MusicBot.Features.Media;
 using MusicBot.Features.Media.Backends;
 using MusicBot.Features.Media.Resolvers;
 using MusicBot.Features.Queue;
-using MusicBot.Features.Utility;
 using MusicBot.Infrastructure;
 
 using NetCord;
@@ -37,10 +36,6 @@ public abstract class Program
         builder.Services.AddApplicationCommands<ApplicationCommandInteraction, ApplicationCommandContext>();
 
         // Bot Support Services
-        builder.Services.AddSingleton<ResourceMonitorService>();
-        builder.Services.AddHostedService<ResourceMonitorService>(sp =>
-            sp.GetRequiredService<ResourceMonitorService>());
-        builder.Services.AddHostedService<ConsoleInputService>();
         builder.Services.AddSingleton<ApplicationCommandService<ApplicationCommandContext>>();
         builder.Services.AddSingleton<YoutubeBackend>();
         builder.Services.AddSingleton<GuildAudioInstanceOrchestrator>();
