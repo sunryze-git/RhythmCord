@@ -6,7 +6,6 @@ using Singularity.Configuration;
 using Singularity.Features.Music;
 using Singularity.Features.Music.Models;
 using Singularity.Features.Music.Resolvers;
-using Singularity.Features.Music.Services;
 using Singularity.Infrastructure;
 
 using NetCord;
