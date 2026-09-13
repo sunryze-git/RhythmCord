@@ -2,7 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-
+using Microsoft.Extensions.Logging;
 using MusicBot.Configuration;
 using MusicBot.Features;
 using MusicBot.Features.Audio;
@@ -22,16 +22,25 @@ namespace MusicBot;
 
 public abstract class Program
 {
-    public delegate GuildAudioInstance GuildAudioInstanceFactory(ApplicationCommandContext context);
-
     public static async Task Main(string[] args)
     {
         InfrastructureBootstrapper.Initialize();
         var builder = Host.CreateApplicationBuilder(args);
 
+        // Configure Logging
+        builder.Logging.ClearProviders();
+        builder.Logging.AddSimpleConsole(options =>
+        {
+            options.TimestampFormat = "[yyyy-MM-dd HH:mm:ss.fffffff] ";
+            options.SingleLine = true;
+            options.IncludeScopes = false;
+        });
+        builder.Logging.SetMinimumLevel(LogLevel.Information);
+        builder.Logging.AddFilter("NetCord", LogLevel.Information);
+        builder.Logging.AddFilter("MusicBot", LogLevel.Debug);
+
         // DI registration
         builder.Services.AddHttpClient();
-        builder.Services.AddLogging();
         builder.Services.AddDiscordGateway();
         builder.Services.AddApplicationCommands<ApplicationCommandInteraction, ApplicationCommandContext>();
 
@@ -45,13 +54,7 @@ public abstract class Program
         builder.Services.AddScoped<QueueManager>();
         builder.Services.AddScoped<MediaResolver>();
         builder.Services.AddScoped<PlaybackHandler>();
-        builder.Services.AddSingleton<GuildAudioInstanceFactory>(provider => context =>
-        {
-            var scope = provider.CreateScope();
-            var instance = scope.ServiceProvider.GetRequiredService<GuildAudioInstance>();
-            instance.Initialize(context);
-            return instance;
-        });
+        builder.Services.AddSingleton<GuildAudioInstanceOrchestrator>();
 
         // Resolvers Enumerable registration
         var conf = new ResolverSettings();
@@ -67,7 +70,7 @@ public abstract class Program
         // Configure lifetime management
         var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
         var orchestrator = host.Services.GetRequiredService<GuildAudioInstanceOrchestrator>();
-        lifetime.ApplicationStopping.Register(() => { orchestrator.CloseAllManagers(); });
+        lifetime.ApplicationStopping.Register(orchestrator.CloseAllManagers);
 
         // Register Commands
         // Add modules from the current assembly

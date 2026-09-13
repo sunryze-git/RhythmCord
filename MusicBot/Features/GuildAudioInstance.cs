@@ -5,15 +5,9 @@ using NetCord.Services.ApplicationCommands;
 
 namespace MusicBot.Features;
 
-public class GuildAudioInstance(AudioService audioService, PlaybackHandler playbackHandler) : IDisposable
+public class GuildAudioInstance(PlaybackHandler playbackHandler)
 {
     public PlaybackHandler PlaybackHandler => playbackHandler;
-
-    public void Dispose()
-    {
-        playbackHandler.Dispose();
-        audioService.Dispose();
-    }
 
     public void Initialize(ApplicationCommandContext context) => playbackHandler.SetContext(context);
 

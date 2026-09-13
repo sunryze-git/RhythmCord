@@ -6,25 +6,23 @@ namespace MusicBot.Features.Audio;
 
 public class AudioService(ILogger<AudioService> logger) : IAudioService
 {
-    private readonly CancellationTokenSource _serviceCts = new();
+    private long _consumedBytes;
+
+    public TimeSpan Position => TimeSpan.FromTicks((long)(Volatile.Read(ref _consumedBytes) / BytesPerSecond * TimeSpan.TicksPerSecond));
+    public bool Looping { get; set; }
+
+    private readonly Lock _lock = new();
+    private CancellationTokenSource? _active;
 
     private const int SampleRate = 48000;
     private const int Channels = 2;
     private const int FrameDurationMs = 20;
     private const int FrameSize = SampleRate * Channels * sizeof(short) * FrameDurationMs / 1000;
-
-    public bool Looping { get; set; }
-
     private const double BytesPerSecond = SampleRate * Channels * sizeof(short);
 
-    private long _consumedBytes;
-
-    public TimeSpan Position => TimeSpan.FromTicks((long)(Volatile.Read(ref _consumedBytes) / BytesPerSecond * TimeSpan.TicksPerSecond));
-
-    public void Dispose()
+    Task IAudioService.StartAudioStreamAsync(Stream inStream, OpusEncodeStream outStream, CancellationToken stopToken, CancellationToken serviceToken)
     {
-        _serviceCts.Cancel();
-        _serviceCts.Dispose();
+        return StartAudioStreamAsync(inStream, outStream, stopToken, serviceToken);
     }
 
     internal async Task StartAudioStreamAsync(Stream inStream, OpusEncodeStream outStream, CancellationToken stopToken, CancellationToken serviceToken = default)
@@ -33,6 +31,7 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
         ArgumentNullException.ThrowIfNull(outStream);
 
         var linked = CancellationTokenSource.CreateLinkedTokenSource(stopToken, serviceToken);
+        lock (_lock) { _active = linked; }
 
         if (!inStream.CanRead)
             throw new ArgumentException("Input stream must be readable.", nameof(inStream));
@@ -67,7 +66,7 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
         }
 
         logger.LogDebug("Flushing Discord audio stream.");
-        await outStream.FlushAsync(linked.Token);
+        await outStream.FlushAsync();
     }
 
     private async Task ConvertToPcmAsync(Stream inputStream, OpusEncodeStream outputStream, CancellationToken linkedToken)
@@ -164,8 +163,13 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
         }
     }
 
-    Task IAudioService.StartAudioStreamAsync(Stream inStream, OpusEncodeStream outStream, CancellationToken stopToken, CancellationToken serviceToken)
+    public void Dispose()
     {
-        return StartAudioStreamAsync(inStream, outStream, stopToken, serviceToken);
+        lock (_lock)
+        {
+            _active?.Cancel();
+            _active?.Dispose();
+            _active = null;
+        }
     }
 }

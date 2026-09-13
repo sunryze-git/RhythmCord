@@ -18,8 +18,10 @@ public class GuildAudioInstanceOrchestrator(ILogger<GuildAudioInstanceOrchestrat
         var entry = _managers.GetOrAdd(guildId, _ =>
         {
             var scope = scopeFactory.CreateScope();
-            var factory = scope.ServiceProvider.GetRequiredService<Program.GuildAudioInstanceFactory>();
-            var instance = factory(context);
+
+            var instance = scope.ServiceProvider.GetRequiredService<GuildAudioInstance>();
+            instance.Initialize(context);
+
             logger.LogInformation("Created new GuildAudioInstance for guild {GuildId}.", guildId);
             return new ManagerEntry(instance, scope);
         });
