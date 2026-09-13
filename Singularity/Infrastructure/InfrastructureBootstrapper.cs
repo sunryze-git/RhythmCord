@@ -7,6 +7,8 @@ using Singularity.Features.Music.Models;
 using Singularity.Features.Music.Resolvers;
 using Singularity.Features.Music.Services;
 using NetCord.Gateway.Voice;
+using Singularity.Features.Booru.Clients;
+using Singularity.Features.Booru.Services;
 
 namespace Singularity.Infrastructure;
 
@@ -41,6 +43,17 @@ public static class InfrastructureBootstrapper
         services.AddTransient<QueueManager>();
         services.AddTransient<PlaybackHandler>();
         services.AddTransient<GuildAudioInstance>();
+
+        return services;
+    }
+
+    public static IServiceCollection AddBooruFeature(this IServiceCollection services)
+    {
+        services.AddHttpClient<IE621Client, E621Client>(client =>
+        {
+            client.BaseAddress = new Uri("https://e621.net/");
+        });
+        services.AddSingleton<BooruService>();
 
         return services;
     }

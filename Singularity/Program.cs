@@ -13,6 +13,7 @@ using NetCord.Hosting.Gateway;
 using NetCord.Hosting.Services.ApplicationCommands;
 using NetCord.Services.ApplicationCommands;
 using Singularity.Features.General;
+using Singularity.Features.Booru;
 
 namespace Singularity;
 
@@ -46,6 +47,9 @@ public abstract class Program
         // Add Music Feature
         InfrastructureBootstrapper.AddMusicFeature(builder.Services);
 
+        // Add Booru Feature
+        InfrastructureBootstrapper.AddBooruFeature(builder.Services);
+
         // Resolvers Enumerable registration
         var conf = new ResolverSettings();
         builder.Configuration.GetSection("ResolverSettings").Bind(conf);
@@ -66,6 +70,7 @@ public abstract class Program
         // Add modules from the current assembly
         host.AddApplicationCommandModule<FunCommands>();
         host.AddApplicationCommandModule<MusicCommands>();
+        host.AddApplicationCommandModule<BooruCommands>();
 
         await host.RunAsync();
     }
