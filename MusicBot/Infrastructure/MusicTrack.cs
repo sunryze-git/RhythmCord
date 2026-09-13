@@ -4,7 +4,7 @@ using YoutubeExplode.Videos;
 
 namespace MusicBot.Infrastructure;
 
-public class MusicTrack : IVideo
+public class MusicTrack : IVideo, IAsyncDisposable
 {
     public MusicTrack(IVideo video, string query, SongSource source) // conversion of IVideo to CustomSong
     {
@@ -49,14 +49,40 @@ public class MusicTrack : IVideo
     // YouTubeExplode queries can have their video object stored here for convenience, if available.
     public IVideo? ResolvedVideo { get; set; } // default null, speciifed if available.
 
+    public Task<Stream>? PreResolvedStreamTask { get; set; }
     public Stream? PreResolvedStream { get; set; }
-    public bool IsPreResolved => PreResolvedStream != null;
+    public bool IsPreResolving => PreResolvedStreamTask != null;
+    public bool IsPreResolved => PreResolvedStream != null || PreResolvedStreamTask != null;
     public VideoId Id { get; }
     public string Url { get; }
     public string Title { get; }
     public Author Author { get; }
     public TimeSpan? Duration { get; }
     public IReadOnlyList<Thumbnail> Thumbnails { get; }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (PreResolvedStreamTask != null)
+        {
+            try
+            {
+                var stream = await PreResolvedStreamTask;
+                await stream.DisposeAsync();
+            }
+            catch
+            {
+            }
+            PreResolvedStreamTask = null;
+        }
+
+        if (PreResolvedStream != null)
+        {
+            await PreResolvedStream.DisposeAsync();
+            PreResolvedStream = null;
+        }
+
+        GC.SuppressFinalize(this);
+    }
 }
 
 public enum SongSource

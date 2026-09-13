@@ -13,7 +13,7 @@ using NetCord.Services.ApplicationCommands;
 
 namespace MusicBot.Features.Audio;
 
-public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audioService, QueueManager queueManager, MediaResolver mediaResolver, GuildAudioInstanceOrchestrator orchestrator)
+public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audioService, QueueManager queueManager, MediaResolver mediaResolver, GuildAudioInstanceOrchestrator orchestrator) : IAsyncDisposable
 {
     private ApplicationCommandContext _commandContext = null!; // set during initialization
     private CancellationTokenSource? _inactivityCts;
@@ -22,6 +22,7 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
     private CancellationTokenSource? _runnerCts; // replaces _stopRunnerCts
     private CancellationTokenSource? _skipSongCts;
     private VoiceClient? _voiceClient;
+    private int _isShuttingDown;
 
     // Public API methods
     public bool Active =>
@@ -77,12 +78,12 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
 
         if ((_playbackTask == null || _playbackTask.IsCompleted) && _voiceClient != null)
         {
-            _playbackTask = Task.Run(() => PlaybackRunnerAsync(_voiceClient));
+            _runnerCts?.Dispose();
+            _runnerCts = new CancellationTokenSource();
+            var token = _runnerCts.Token;
+
+            _playbackTask = Task.Run(() => PlaybackRunnerAsync(_voiceClient, token));
             logger.LogInformation("Playback runner start initiated.");
-        }
-        else
-        {
-            logger.LogInformation("Playback task already running.");
         }
     }
 
@@ -109,74 +110,29 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
     }
 
     // Shutdown and Cleanup Handling
-    private async ValueTask ShutdownAsync(DisconnectEventArgs args)
+    private ValueTask ShutdownAsync(DisconnectEventArgs args)
     {
+        if (Interlocked.Exchange(ref _isShuttingDown, 1) != 0)
+            return ValueTask.CompletedTask;
+
         logger.LogInformation("Shutdown requested for playback handler.");
+
+        _voiceClient?.Disconnect -= ShutdownAsync;
 
         // Clear the queue and cancel runner/skip/inactivity tokens
         queueManager.Clear();
 
-        // Cancel all relevant tokens
-        // Cancelling all these tokens will result in playback loop to end.
-        try
+        if (_commandContext.Guild != null)
         {
-            _runnerCts?.CancelAsync(); // cancel the playback loop
-            _skipSongCts?.CancelAsync(); // cancel current song playback
-            _inactivityCts?.CancelAsync(); // cancel inactivity timer
-        }
-        catch
-        {
-            logger.LogError("Error cancelling playback tokens during player shutdown.");
+            var guildId = _commandContext.Guild.Id;
+            _ = Task.Run(async () => await orchestrator.CloseManagerAsync(guildId));
         }
 
-        // Wait briefly for the playback task to finish
-        if (_playbackTask != null)
-            try
-            {
-                await _playbackTask.WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            catch (Exception ex) when (ex is TaskCanceledException or TimeoutException)
-            {
-                logger.LogWarning(ex, "Playback task did not complete in time during shutdown.");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Error while waiting for playback task during shutdown.");
-            }
-
-        // Perform final cleanup synchronously
-        try
-        {
-            if (_commandContext.Guild != null) orchestrator.CloseManager(_commandContext.Guild.Id);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to notify GlobalMusicService during cleanup.");
-        }
-
-        // Dispose local resources
-        Dispose();
-        logger.LogInformation("Playback handler cleanup complete.");
-    }
-
-    // Dispose pattern implementation
-    public void Dispose()
-    {
-        try
-        {
-            _playbackTask?.Dispose();
-            _runnerCts?.Dispose();
-            _skipSongCts?.Dispose();
-            _inactivityCts?.Dispose();
-        }
-        catch (ObjectDisposedException ex)
-        {
-            logger.LogDebug(ex, "Some resources were already disposed during DisposeInternal.");
-        }
+        return ValueTask.CompletedTask;
     }
 
     // Primary playback loop
-    private async Task PlaybackRunnerAsync(VoiceClient voiceClient)
+    private async Task PlaybackRunnerAsync(VoiceClient voiceClient, CancellationToken runnerToken)
     {
         try
         {
@@ -188,13 +144,11 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
             await using var opusEncodeStream =
                 new OpusEncodeStream(outStream, PcmFormat.Short, VoiceChannels.Stereo, OpusApplication.Audio);
 
-            _runnerCts = new CancellationTokenSource();
-            var runnerToken = _runnerCts.Token;
-
             while (!runnerToken.IsCancellationRequested)
             {
                 _inactivityCts?.Dispose();
-                _inactivityCts = new CancellationTokenSource();
+                _inactivityCts = CancellationTokenSource.CreateLinkedTokenSource(runnerToken);
+
                 try
                 {
                     while (!queueManager.IsEmpty() && !runnerToken.IsCancellationRequested)
@@ -210,7 +164,7 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
                             }
                         }, runnerToken);
 
-                        await PlaySongAsync(opusEncodeStream);
+                        await PlaySongAsync(opusEncodeStream, runnerToken);
                         if (runnerToken.IsCancellationRequested) break;
                     }
 
@@ -230,8 +184,14 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
                         logger.LogInformation("Inactivity timer completed. Stopping playback.");
                         break;
                     }
-                    catch (TaskCanceledException)
+                    catch (OperationCanceledException)
                     {
+                        if (runnerToken.IsCancellationRequested)
+                        {
+                            logger.LogDebug("Playback runner canceled during inactivity delay.");
+                            break;
+                        }
+
                         logger.LogDebug("Inactivity timer was cancelled, continuing playback.");
                     }
                 }
@@ -255,10 +215,10 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
     }
 
     // Play a single song from the queue
-    private async Task PlaySongAsync(OpusEncodeStream outStream)
+    private async Task PlaySongAsync(OpusEncodeStream outStream, CancellationToken runnerToken)
     {
         _skipSongCts?.Dispose();
-        _skipSongCts = new CancellationTokenSource();
+        _skipSongCts = CancellationTokenSource.CreateLinkedTokenSource(runnerToken);
 
         try
         {
@@ -270,9 +230,9 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
             }
 
             // Ternary. If its pre-resolved, use that stream, else resolve normally.
-            await using var songStream = next.IsPreResolved
-                ? next.PreResolvedStream!
-                : await mediaResolver.ResolveStreamAsync(next);
+            await using var songStream = next.PreResolvedStreamTask != null
+                ? await next.PreResolvedStreamTask
+                : next.PreResolvedStream ?? await mediaResolver.ResolveStreamAsync(next);
 
             if (songStream == null)
             {
@@ -305,7 +265,7 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
         finally
         {
             // Remove the song from the queue after playback or error
-            queueManager.RemoveCurrent();
+            await queueManager.RemoveCurrentAsync();
         }
     }
 
@@ -320,5 +280,42 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
         {
             logger.LogError(ex, "Failed to send invocation message.");
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        logger.LogInformation("Disposing PlaybackHandler async resources.");
+        _voiceClient?.Disconnect -= ShutdownAsync;
+
+        if (queueManager != null)
+        {
+            await queueManager.ClearAsync();
+        }
+
+        try
+        {
+            _runnerCts?.Cancel();
+            _skipSongCts?.Cancel();
+            _inactivityCts?.Cancel();
+        }
+        catch (ObjectDisposedException) { }
+
+        if (_playbackTask != null)
+        {
+            try
+            {
+                await _playbackTask.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
+            {
+                logger.LogWarning(ex, "Playback task took too long to cancel during disposal.");
+            }
+        }
+
+        _runnerCts?.Dispose();
+        _skipSongCts?.Dispose();
+        _inactivityCts?.Dispose();
+
+        GC.SuppressFinalize(this);
     }
 }

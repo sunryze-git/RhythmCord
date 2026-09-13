@@ -151,7 +151,7 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
         {
             if (!process.HasExited)
             {
-                process.Kill();
+                process.Kill(entireProcessTree: true);
             }
             throw;
         }
@@ -163,13 +163,21 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
         }
     }
 
-    public void Dispose()
+    public ValueTask DisposeAsync()
     {
         lock (_lock)
         {
-            _active?.Cancel();
+            try
+            {
+                _active?.Cancel();
+            }
+            catch (ObjectDisposedException) { }
+
             _active?.Dispose();
             _active = null;
         }
+
+        GC.SuppressFinalize(this);
+        return ValueTask.CompletedTask;
     }
 }

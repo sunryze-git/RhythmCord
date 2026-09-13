@@ -17,7 +17,7 @@ public class GuildAudioInstanceOrchestrator(ILogger<GuildAudioInstanceOrchestrat
         var guildId = context.Guild!.Id;
         var entry = _managers.GetOrAdd(guildId, _ =>
         {
-            var scope = scopeFactory.CreateScope();
+            var scope = scopeFactory.CreateAsyncScope();
 
             var instance = scope.ServiceProvider.GetRequiredService<GuildAudioInstance>();
             instance.Initialize(context);
@@ -29,20 +29,21 @@ public class GuildAudioInstanceOrchestrator(ILogger<GuildAudioInstanceOrchestrat
         return entry.Instance;
     }
 
-    public void CloseManager(ulong guildId)
+    public async ValueTask CloseManagerAsync(ulong guildId)
     {
         if (!_managers.TryRemove(guildId, out var entry)) return;
         logger.LogInformation("Closing manager for guild {GuildId}.", guildId);
-        entry.Scope.Dispose();
+
+        await entry.Scope.DisposeAsync();
     }
 
-    public void CloseAllManagers()
+    public async ValueTask CloseAllManagersAsync()
     {
-        foreach (var id in _managers.Keys) CloseManager(id);
+        foreach (var id in _managers.Keys) await CloseManagerAsync(id);
     }
 
     public bool GuildIsActive(ulong guildId) => _managers.ContainsKey(guildId);
     public IEnumerable<GuildAudioInstance> GetActiveManagers() => _managers.Values.Select(x => x.Instance);
 
-    private record ManagerEntry(GuildAudioInstance Instance, IServiceScope Scope);
+    private record ManagerEntry(GuildAudioInstance Instance, AsyncServiceScope Scope);
 }

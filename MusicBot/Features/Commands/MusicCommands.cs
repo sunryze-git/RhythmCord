@@ -17,7 +17,6 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator) : Applic
         try
         {
             var manager = GetManager();
-            manager.PlaybackHandler.SetContext(Context);
 
             // Join Voice and enqueue song concurrently
             var song = await manager.EnqueueSongAsync(query, insertNext);
@@ -93,8 +92,10 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator) : Applic
     public async Task LeaveAsync()
     {
         await RespondAsync(InteractionCallback.Message("Bye! 👋"));
-        var manager = GetManager();
-        await manager.PlaybackHandler.EndAsync();
+        if (Context.Guild != null)
+        {
+            await orchestrator.CloseManagerAsync(Context.Guild.Id);
+        }
     }
 
     [SlashCommand("status", "Shows information about the current song.")]
@@ -222,5 +223,10 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator) : Applic
         await RespondAsync(InteractionCallback.Message(properties));
     }
 
-    private GuildAudioInstance GetManager() => orchestrator.GetOrCreateManager(Context);
+    private GuildAudioInstance GetManager()
+    {
+        var manager = orchestrator.GetOrCreateManager(Context);
+        manager.PlaybackHandler.SetContext(Context);
+        return manager;
+    }
 }

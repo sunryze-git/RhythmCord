@@ -36,6 +36,8 @@ public class YoutubeResolver(YoutubeBackend youtubeBackend, ILogger<YoutubeResol
         var sw = Stopwatch.StartNew();
         try
         {
+            IReadOnlyList<MusicTrack> tracks;
+
             // Handle URL
             if (Uri.IsWellFormedUriString(query, UriKind.Absolute))
             {
@@ -46,33 +48,29 @@ public class YoutubeResolver(YoutubeBackend youtubeBackend, ILogger<YoutubeResol
                     logger.LogInformation("Resolving YouTube playlist: {PlaylistUrl}", uri);
                     var playlist = await youtubeBackend.GetPlaylistVideosAsync(uri.AbsoluteUri);
 
-                    logger.LogInformation("Resolved {Count} tracks from playlist in {ElapsedMilliseconds} ms",
-                        playlist.Count, sw.ElapsedMilliseconds);
-                    sw.Reset();
-
-                    return playlist.Count == 0
-                        ? Array.Empty<MusicTrack>()
-                        : playlist.Select(v => new MusicTrack(v, query, SongSource.YouTube)).ToList();
+                    tracks = playlist.Select(v => new MusicTrack(v, query, SongSource.YouTube)).ToList();
                 }
-
-                logger.LogInformation("Resolving YouTube video: {VideoUrl}", uri);
-                var video = await youtubeBackend.GetVideoAsync(uri.AbsoluteUri);
-                logger.LogInformation("Resolved video in {ElapsedMilliseconds} ms", sw.ElapsedMilliseconds);
-                sw.Reset();
-
-                return video == null
-                    ? Array.Empty<MusicTrack>()
-                    : new List<MusicTrack> { new(video, query, SongSource.YouTube) };
+                else
+                {
+                    logger.LogInformation("Resolving YouTube video: {VideoUrl}", uri);
+                    var video = await youtubeBackend.GetVideoAsync(uri.AbsoluteUri);
+                    tracks = video == null ? [] : [new MusicTrack(video, query, SongSource.YouTube)];
+                }
+            }
+            else
+            {
+                logger.LogInformation("Searching YouTube for: {Query}", query);
+                var searchResult = await youtubeBackend.GetVideoAsync(query);
+                tracks = searchResult == null ? [] : [new MusicTrack(searchResult, query, SongSource.YouTube)];
             }
 
-            // Handle search query
-            logger.LogInformation("Searching YouTube for: {Query}", query);
-            var searchResult = await youtubeBackend.GetVideoAsync(query);
-            logger.LogInformation("Search resolved in {ElapsedMilliseconds} ms", sw.ElapsedMilliseconds);
-            sw.Reset();
-            return searchResult == null
-                ? Array.Empty<MusicTrack>()
-                : new List<MusicTrack> { new(searchResult, query, SongSource.YouTube) };
+            if (tracks.Count > 0 && tracks[0].ResolvedVideo is not null)
+            {
+                var firstTrack = tracks[0];
+                firstTrack.PreResolvedStreamTask = youtubeBackend.GetStreamAsync(firstTrack.ResolvedVideo.Id);
+            }
+
+            return tracks;
         }
         catch (Exception ex)
         {

@@ -70,7 +70,10 @@ public abstract class Program
         // Configure lifetime management
         var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
         var orchestrator = host.Services.GetRequiredService<GuildAudioInstanceOrchestrator>();
-        lifetime.ApplicationStopping.Register(orchestrator.CloseAllManagers);
+        lifetime.ApplicationStopping.Register(() =>
+        {
+            orchestrator.CloseAllManagersAsync().AsTask().GetAwaiter().GetResult();
+        });
 
         // Register Commands
         // Add modules from the current assembly

@@ -2,7 +2,7 @@ using NetCord.Gateway.Voice;
 
 namespace MusicBot.Features.Audio;
 
-public interface IAudioService : IDisposable
+public interface IAudioService : IAsyncDisposable
 {
     bool Looping { get; set; }
     TimeSpan Position { get; }
