@@ -1,6 +1,6 @@
 {
     inputs = {
-        nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
+        nixpkgs.url = "nixpkgs/nixos-unstable";
         flake-parts.url = "github:hercules-ci/flake-parts";
     };
 
@@ -9,9 +9,9 @@
             systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
             perSystem = { inputs', pkgs, ... }: {
                 devShells.default = let
-                    dotnet = pkgs.dotnetCorePackages.dotnet_9;
+                    dotnet = pkgs.dotnetCorePackages.dotnet_10;
                 in pkgs.mkShell {
-                    name = "VLCDiscord";
+                    name = "Singularity";
                     packages = with pkgs; [
                         dotnet.sdk
                         libopus
