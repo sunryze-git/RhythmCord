@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Singularity.Configuration;
-using Singularity.Features.Commands;
 using Singularity.Features.Music;
 using Singularity.Features.Music.Models;
 using Singularity.Features.Music.Resolvers;
@@ -14,6 +13,7 @@ using NetCord;
 using NetCord.Hosting.Gateway;
 using NetCord.Hosting.Services.ApplicationCommands;
 using NetCord.Services.ApplicationCommands;
+using Singularity.Features.General;
 
 namespace Singularity;
 

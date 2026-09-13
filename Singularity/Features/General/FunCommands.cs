@@ -4,7 +4,7 @@ using NetCord;
 using NetCord.Rest;
 using NetCord.Services.ApplicationCommands;
 
-namespace Singularity.Features.Commands;
+namespace Singularity.Features.General;
 
 public class FunCommands(ILogger<FunCommands> logger) : ApplicationCommandModule<ApplicationCommandContext>
 {
