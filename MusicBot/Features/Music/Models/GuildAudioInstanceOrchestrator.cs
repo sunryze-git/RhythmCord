@@ -2,10 +2,9 @@ using System.Collections.Concurrent;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-
 using NetCord.Services.ApplicationCommands;
 
-namespace MusicBot.Features;
+namespace MusicBot.Features.Music.Models;
 
 public class GuildAudioInstanceOrchestrator(ILogger<GuildAudioInstanceOrchestrator> logger, IServiceScopeFactory scopeFactory)
 {

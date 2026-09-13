@@ -1,9 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
-
+using MusicBot.Features.Music.Models;
 using NetCord.Services;
 using NetCord.Services.ApplicationCommands;
 
-namespace MusicBot.Features.Commands.Permissions;
+namespace MusicBot.Features.Music.Permissions;
 
 // Precondition to ensure the bot is already in a voice channel in the guild
 public class RequireBotInVoiceChannel : PreconditionAttribute<ApplicationCommandContext>

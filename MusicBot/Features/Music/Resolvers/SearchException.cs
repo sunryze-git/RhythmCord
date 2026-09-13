@@ -1,3 +1,3 @@
-namespace MusicBot.Features.Media.Resolvers;
+namespace MusicBot.Features.Music.Resolvers;
 
 public class SearchException(string message) : Exception(message);

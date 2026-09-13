@@ -1,37 +1,36 @@
 using System.Collections.Immutable;
-
 using Microsoft.Extensions.Logging;
-
-using MusicBot.Features.Media;
-using MusicBot.Features.Media.Resolvers;
-using MusicBot.Features.Queue;
-using MusicBot.Infrastructure;
-
+using MusicBot.Features.Music.Models;
+using MusicBot.Features.Music.Resolvers;
 using NetCord.Gateway;
 using NetCord.Gateway.Voice;
 using NetCord.Services.ApplicationCommands;
 
-namespace MusicBot.Features.Audio;
+namespace MusicBot.Features.Music.Services;
 
-public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audioService, QueueManager queueManager, MediaResolver mediaResolver, GuildAudioInstanceOrchestrator orchestrator) : IAsyncDisposable
+public class PlaybackHandler(
+    ILogger<PlaybackHandler> logger,
+    AudioService audioService,
+    QueueManager queueManager,
+    MediaResolver mediaResolver,
+    GuildAudioInstanceOrchestrator orchestrator) : IAsyncDisposable
 {
-    private ApplicationCommandContext _commandContext = null!; // set during initialization
+    private ApplicationCommandContext _commandContext = null!;
     private CancellationTokenSource? _inactivityCts;
 
     private Task? _playbackTask;
-    private CancellationTokenSource? _runnerCts; // replaces _stopRunnerCts
+    private CancellationTokenSource? _runnerCts;
     private CancellationTokenSource? _skipSongCts;
     private VoiceClient? _voiceClient;
     private int _isShuttingDown;
 
-    // Public API methods
     public bool Active =>
         _playbackTask?.Status is TaskStatus.Running or TaskStatus.WaitingForActivation or TaskStatus.WaitingToRun;
 
     public bool Initialized => _voiceClient != null;
 
-    public ImmutableList<MusicTrack> SongQueue => queueManager.SongQueue;
-    public MusicTrack? CurrentSong => queueManager.CurrentSong;
+    public ImmutableList<MusicTrackNew> SongQueue => queueManager.SongQueue;
+    public MusicTrackNew? CurrentSong => queueManager.CurrentSong;
     public TimeSpan Duration => CurrentSong?.Duration ?? TimeSpan.Zero;
     public TimeSpan Position => audioService.Position;
     public void SkipSong() => _skipSongCts?.Cancel();
@@ -47,14 +46,12 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
     public void Stop() => StopQueue();
     public Task EndAsync() => LeaveVoiceAsync();
 
-    // Post-Construction Initialization
     public async Task InitializeAsync()
     {
         _voiceClient = await JoinVoiceAsync();
         _voiceClient.Disconnect += ShutdownAsync;
     }
 
-    // Voice State
     private async Task<VoiceClient> JoinVoiceAsync()
     {
         var target = _commandContext.Guild!.VoiceStates.GetValueOrDefault(_commandContext.User.Id);
@@ -70,7 +67,6 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
         await _commandContext.Client.UpdateVoiceStateAsync(new VoiceStateProperties(_commandContext.Guild.Id, null));
     }
 
-    // Start the playback loop with the given voice client
     public void StartQueue()
     {
         logger.LogInformation("Beginning playback of queue.");
@@ -87,7 +83,7 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
         }
     }
 
-    public async Task<MusicTrack> AddSongAsync(string term, bool next)
+    public async Task<MusicTrackNew> AddSongAsync(string term, bool next)
     {
         logger.LogInformation("Adding song to queue: {Term}", term);
 
@@ -102,14 +98,12 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
         return songsToAdd[0];
     }
 
-    // Stop the queue and clear it
     private void StopQueue()
     {
         queueManager.Clear();
-        _skipSongCts?.Cancel(); // skipping on an empty queue triggers inactivity timer
+        _skipSongCts?.Cancel();
     }
 
-    // Shutdown and Cleanup Handling
     private ValueTask ShutdownAsync(DisconnectEventArgs args)
     {
         if (Interlocked.Exchange(ref _isShuttingDown, 1) != 0)
@@ -118,8 +112,6 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
         logger.LogInformation("Shutdown requested for playback handler.");
 
         _voiceClient?.Disconnect -= ShutdownAsync;
-
-        // Clear the queue and cancel runner/skip/inactivity tokens
         queueManager.Clear();
 
         if (_commandContext.Guild != null)
@@ -131,7 +123,6 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
         return ValueTask.CompletedTask;
     }
 
-    // Primary playback loop
     private async Task PlaybackRunnerAsync(VoiceClient voiceClient, CancellationToken runnerToken)
     {
         try
@@ -153,16 +144,14 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
                 {
                     while (!queueManager.IsEmpty() && !runnerToken.IsCancellationRequested)
                     {
-                        // Pre-resolve the next track while the current one is playing
-                        _ = Task.Run(async () =>
+                        var nextTrack = queueManager.SongQueue.Skip(1).FirstOrDefault();
+
+                        // Delegate background pre-fetching through mediaResolver
+                        if (nextTrack is not null && nextTrack.PreResolvedStreamInfoTask is null)
                         {
-                            var nextTrack = queueManager.SongQueue.Skip(1).FirstOrDefault();
-                            if (nextTrack is not null && !nextTrack.IsPreResolved)
-                            {
-                                nextTrack.PreResolvedStream = await mediaResolver.ResolveStreamAsync(nextTrack);
-                                logger.LogDebug("Pre-resolved stream for next track: {TrackTitle}", nextTrack.Title);
-                            }
-                        }, runnerToken);
+                            mediaResolver.PreFetchStreamInfo(nextTrack);
+                            logger.LogDebug("Initiated stream info pre-fetch for next track: {TrackTitle}", nextTrack.Title);
+                        }
 
                         await PlaySongAsync(opusEncodeStream, runnerToken);
                         if (runnerToken.IsCancellationRequested) break;
@@ -175,9 +164,7 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
                     }
 
                     logger.LogInformation("Queue is empty. Starting inactivity timer.");
-                    await TrySendMessageAsync("Reached the end of the queue.");
 
-                    // Wait for inactivity or cancellation
                     try
                     {
                         await Task.Delay(TimeSpan.FromMinutes(10), _inactivityCts.Token);
@@ -214,7 +201,6 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
         }
     }
 
-    // Play a single song from the queue
     private async Task PlaySongAsync(OpusEncodeStream outStream, CancellationToken runnerToken)
     {
         _skipSongCts?.Dispose();
@@ -229,10 +215,8 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
                 return;
             }
 
-            // Ternary. If its pre-resolved, use that stream, else resolve normally.
-            await using var songStream = next.PreResolvedStreamTask != null
-                ? await next.PreResolvedStreamTask
-                : next.PreResolvedStream ?? await mediaResolver.ResolveStreamAsync(next);
+            // MediaResolver.ResolveStreamAsync will await PreResolvedStreamInfoTask if set, or resolve on demand
+            await using var songStream = await mediaResolver.ResolveStreamAsync(next);
 
             if (songStream == null)
             {
@@ -264,12 +248,10 @@ public class PlaybackHandler(ILogger<PlaybackHandler> logger, AudioService audio
         }
         finally
         {
-            // Remove the song from the queue after playback or error
             await queueManager.RemoveCurrentAsync();
         }
     }
 
-    // Helper to send messages to the invocation context
     private async Task TrySendMessageAsync(string message)
     {
         try

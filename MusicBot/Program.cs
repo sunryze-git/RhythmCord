@@ -1,16 +1,13 @@
-using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MusicBot.Configuration;
-using MusicBot.Features;
-using MusicBot.Features.Audio;
 using MusicBot.Features.Commands;
-using MusicBot.Features.Media;
-using MusicBot.Features.Media.Backends;
-using MusicBot.Features.Media.Resolvers;
-using MusicBot.Features.Queue;
+using MusicBot.Features.Music;
+using MusicBot.Features.Music.Models;
+using MusicBot.Features.Music.Resolvers;
+using MusicBot.Features.Music.Services;
 using MusicBot.Infrastructure;
 
 using NetCord;
@@ -46,23 +43,14 @@ public abstract class Program
 
         // Bot Support Services
         builder.Services.AddSingleton<ApplicationCommandService<ApplicationCommandContext>>();
-        builder.Services.AddSingleton<YoutubeBackend>();
-        builder.Services.AddSingleton<GuildAudioInstanceOrchestrator>();
-        builder.Services.AddSingleton<DlpBackend>();
-        builder.Services.AddScoped<AudioService>();
-        builder.Services.AddScoped<GuildAudioInstance>();
-        builder.Services.AddScoped<QueueManager>();
-        builder.Services.AddScoped<MediaResolver>();
-        builder.Services.AddScoped<PlaybackHandler>();
-        builder.Services.AddSingleton<GuildAudioInstanceOrchestrator>();
+
+        // Add Music Feature
+        InfrastructureBootstrapper.AddMusicFeature(builder.Services);
 
         // Resolvers Enumerable registration
         var conf = new ResolverSettings();
         builder.Configuration.GetSection("ResolverSettings").Bind(conf);
-        builder.Services.AddScoped<IMediaResolver, DirectFileResolver>();
-        builder.Services.AddScoped<IMediaResolver, SoundcloudResolver>();
         builder.Services.AddScoped<IMediaResolver, YoutubeResolver>();
-        builder.Services.AddScoped<IMediaResolver, YtdlpResolver>();
 
         // Begin
         var host = builder.Build();

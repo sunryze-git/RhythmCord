@@ -1,17 +1,17 @@
 using System.Collections.Immutable;
-
+using MusicBot.Features.Music.Models;
 using MusicBot.Infrastructure;
 
-namespace MusicBot.Features.Queue;
+namespace MusicBot.Features.Music.Services;
 
 public class QueueManager : IAsyncDisposable
 {
-    private readonly List<MusicTrack> _songQueue = [];
+    private readonly List<MusicTrackNew> _songQueue = [];
 
-    public ImmutableList<MusicTrack> SongQueue => [.. _songQueue];
-    public MusicTrack? CurrentSong => _songQueue.FirstOrDefault();
+    public ImmutableList<MusicTrackNew> SongQueue => [.. _songQueue];
+    public MusicTrackNew? CurrentSong => _songQueue.FirstOrDefault();
 
-    public void AddSong(MusicTrack song, bool playNext = false)
+    public void AddSong(MusicTrackNew song, bool playNext = false)
     {
         if (playNext)
             _songQueue.Insert(0, song);
@@ -19,7 +19,7 @@ public class QueueManager : IAsyncDisposable
             _songQueue.Add(song);
     }
 
-    public void AddSong(IEnumerable<MusicTrack> songs, bool playNext = false)
+    public void AddSong(IEnumerable<MusicTrackNew> songs, bool playNext = false)
     {
         if (playNext)
             _songQueue.InsertRange(0, songs);
@@ -34,7 +34,6 @@ public class QueueManager : IAsyncDisposable
         if (current == null) return;
 
         _songQueue.Remove(current);
-        _ = current.DisposeAsync();
     }
 
     public async ValueTask RemoveCurrentAsync()
@@ -44,7 +43,6 @@ public class QueueManager : IAsyncDisposable
         if (current == null) return;
 
         _songQueue.Remove(current);
-        await current.DisposeAsync();
     }
 
     public void Shuffle()
@@ -55,19 +53,11 @@ public class QueueManager : IAsyncDisposable
 
     public void Clear()
     {
-        foreach (var track in _songQueue)
-        {
-            _ = track.DisposeAsync();
-        }
         _songQueue.Clear();
     }
 
     public async ValueTask ClearAsync()
     {
-        foreach (var track in _songQueue)
-        {
-            await track.DisposeAsync();
-        }
         _songQueue.Clear();
     }
 

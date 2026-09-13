@@ -2,7 +2,7 @@ using NetCord;
 using NetCord.Services;
 using NetCord.Services.ApplicationCommands;
 
-namespace MusicBot.Features.Commands.Permissions;
+namespace MusicBot.Features.Music.Permissions;
 
 // Precondition to ensure the bot has Connect and Speak permissions in the user's voice channel
 public class RequireBotConnectPermission : PreconditionAttribute<ApplicationCommandContext>

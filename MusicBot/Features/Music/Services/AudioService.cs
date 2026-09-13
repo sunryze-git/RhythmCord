@@ -2,7 +2,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using NetCord.Gateway.Voice;
 
-namespace MusicBot.Features.Audio;
+namespace MusicBot.Features.Music.Services;
 
 public class AudioService(ILogger<AudioService> logger) : IAudioService
 {

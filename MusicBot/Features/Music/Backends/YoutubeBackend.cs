@@ -1,12 +1,11 @@
 using Microsoft.Extensions.Logging;
-
 using YoutubeExplode;
 using YoutubeExplode.Common;
 using YoutubeExplode.Playlists;
 using YoutubeExplode.Videos;
 using YoutubeExplode.Videos.Streams;
 
-namespace MusicBot.Features.Media.Backends;
+namespace MusicBot.Features.Music.Backends;
 
 public class YoutubeBackend(ILogger<YoutubeBackend> logger)
 {
@@ -69,22 +68,23 @@ public class YoutubeBackend(ILogger<YoutubeBackend> logger)
         }
     }
 
+    internal async Task<IStreamInfo> GetStreamInfoAsync(VideoId videoId)
+    {
+        logger.LogInformation("Fetching stream manifest for video: {VideoId}", videoId.Value);
+        var manifest = await _client.Videos.Streams.GetManifestAsync(videoId);
+        var streamInfo = manifest.GetAudioOnlyStreams().GetWithHighestBitrate();
+
+        return streamInfo ?? throw new InvalidOperationException($"No audio stream found for video: {videoId.Value}");
+    }
+
+    internal async Task<Stream> GetStreamFromInfoAsync(IStreamInfo streamInfo)
+    {
+        return await _client.Videos.Streams.GetAsync(streamInfo);
+    }
+
     internal async Task<Stream> GetStreamAsync(VideoId videoId)
     {
-        logger.LogInformation("Getting stream for video: {Title}", videoId);
-        try
-        {
-            var manifest = await _client.Videos.Streams.GetManifestAsync(videoId);
-
-            var streamInfo = manifest.GetAudioOnlyStreams().GetWithHighestBitrate();
-            if (streamInfo is null) throw new InvalidOperationException($"No audio stream found for video: {videoId}");
-
-            return await _client.Videos.Streams.GetAsync(streamInfo);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to get stream for video: {Title}", videoId);
-            throw;
-        }
+        var streamInfo = await GetStreamInfoAsync(videoId);
+        return await GetStreamFromInfoAsync(streamInfo);
     }
 }

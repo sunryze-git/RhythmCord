@@ -1,9 +1,7 @@
-using MusicBot.Features.Audio;
-using MusicBot.Infrastructure;
-
+using MusicBot.Features.Music.Services;
 using NetCord.Services.ApplicationCommands;
 
-namespace MusicBot.Features;
+namespace MusicBot.Features.Music.Models;
 
 public class GuildAudioInstance(PlaybackHandler playbackHandler)
 {
@@ -11,7 +9,7 @@ public class GuildAudioInstance(PlaybackHandler playbackHandler)
 
     public void Initialize(ApplicationCommandContext context) => playbackHandler.SetContext(context);
 
-    public async Task<MusicTrack> EnqueueSongAsync(string term, bool next)
+    public async Task<MusicTrackNew> EnqueueSongAsync(string term, bool next)
     {
         var song = await PlaybackHandler.AddSongAsync(term, next);
 

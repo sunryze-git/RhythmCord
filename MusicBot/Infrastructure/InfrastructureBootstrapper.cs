@@ -1,6 +1,11 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using FFmpeg.Loader;
+using Microsoft.Extensions.DependencyInjection;
+using MusicBot.Features.Music.Backends;
+using MusicBot.Features.Music.Models;
+using MusicBot.Features.Music.Resolvers;
+using MusicBot.Features.Music.Services;
 using NetCord.Gateway.Voice;
 
 namespace MusicBot.Infrastructure;
@@ -18,6 +23,26 @@ public static class InfrastructureBootstrapper
             throw new DllNotFoundException(
                 "Required native library 'libopus' was not found. Please in(89%)stall libopus (e.g., 'apt install libopus0').");
         }
+    }
+
+    public static IServiceCollection AddMusicFeature(this IServiceCollection services)
+    {
+        // Core Audio & Dispatch Services
+        services.AddSingleton<AudioService>();
+        services.AddSingleton<GuildAudioInstanceOrchestrator>();
+        services.AddSingleton<MediaResolver>();
+
+        // Backends & Concrete Resolvers
+        services.AddSingleton<YoutubeBackend>();
+        services.AddSingleton<YoutubeResolver>();
+        services.AddSingleton<YtdlpResolver>();
+
+        // Transient Guild State Controllers
+        services.AddTransient<QueueManager>();
+        services.AddTransient<PlaybackHandler>();
+        services.AddTransient<GuildAudioInstance>();
+
+        return services;
     }
 
     private static void LoadFfmpegLibraries()
@@ -79,4 +104,6 @@ public static class InfrastructureBootstrapper
             return IntPtr.Zero;
         });
     }
+
+
 }

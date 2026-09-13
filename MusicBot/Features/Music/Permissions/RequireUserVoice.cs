@@ -1,7 +1,7 @@
 using NetCord.Services;
 using NetCord.Services.ApplicationCommands;
 
-namespace MusicBot.Features.Commands.Permissions;
+namespace MusicBot.Features.Music.Permissions;
 
 public class RequireUserVoiceAttribute : PreconditionAttribute<ApplicationCommandContext>
 {

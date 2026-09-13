@@ -1,6 +1,6 @@
 using NetCord.Gateway.Voice;
 
-namespace MusicBot.Features.Audio;
+namespace MusicBot.Features.Music.Services;
 
 public interface IAudioService : IAsyncDisposable
 {
