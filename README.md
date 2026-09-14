@@ -83,4 +83,4 @@ dotnet run --project Singularity.csproj
 ## Booru Command Reference
 | Command | Description |
 | :--- | :--- |
-| `/e621 <tags>` | Searches for a random post with your tags. Supports optional <type> and <rating> filters.
+| `/e621 <tags>` | Searches for a random post. Supports optional `<type>` and `<rating>` filters.
