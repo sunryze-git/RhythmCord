@@ -4,10 +4,11 @@ using NetCord;
 using NetCord.Rest;
 using NetCord.Services.ApplicationCommands;
 using Singularity.Infrastructure;
+using Microsoft.Extensions.Logging;
 
 namespace Singularity.Features.Music;
 
-public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator) : ApplicationCommandModule<ApplicationCommandContext>
+public class MusicCommands(ILogger<MusicCommands> logger, GuildAudioInstanceOrchestrator orchestrator) : ApplicationCommandModule<ApplicationCommandContext>
 {
     [SlashCommand("play", "Play a song by URL, or by a search query.")]
     [RequireBotConnectPermission]
@@ -40,7 +41,8 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator) : Applic
         }
         catch (Exception e)
         {
-            await ModifyResponseAsync(message => message.Content = $"An error occurred while adding the song:\n```{e.Message}```");
+            await ModifyResponseAsync(message => message.Content = $"An error occurred while adding the song.");
+            logger.LogError(e, "An error occurred during media playback in guild {}", Context.Guild?.Id);
         }
     }
 
@@ -122,7 +124,6 @@ public class MusicCommands(GuildAudioInstanceOrchestrator orchestrator) : Applic
             Description = description,
             Thumbnail = song.ThumbnailUrl is not null ? new EmbedThumbnailProperties(song.ThumbnailUrl) : null,
             Color = new Color(255, 204, 0),
-            Footer = new EmbedFooterProperties { Text = $"Requested by {Context.User.Username}" }
         };
 
         await RespondAsync(InteractionCallback.Message(new InteractionMessageProperties { Embeds = [embed] }));
