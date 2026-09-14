@@ -5,7 +5,7 @@ using YoutubeExplode.Videos.Streams;
 
 namespace Singularity.Features.Music.Models;
 
-public enum SongSource
+internal enum SongSource
 {
     Cobalt,
     Direct,
@@ -14,7 +14,7 @@ public enum SongSource
     Ytdlp
 }
 
-public class MusicTrackNew
+internal class MusicTrackNew
 {
     public required string Query { get; init; }
     public required string Url { get; init; }
@@ -37,9 +37,9 @@ public class MusicTrackNew
     public bool IsPreResolved => PreResolvedStreamInfoTask is { IsCompletedSuccessfully: true };
 }
 
-public static class MusicTrackExtensions
+internal static class MusicTrackExtensions
 {
-    public static MusicTrackNew FromYouTubeVideo(this IVideo video, string query)
+    internal static MusicTrackNew FromYouTubeVideo(this IVideo video, string query)
     {
         return new MusicTrackNew
         {
@@ -54,7 +54,7 @@ public static class MusicTrackExtensions
         };
     }
 
-    public static MusicTrackNew FromYouTubeVideo(this PlaylistVideo video, string query)
+    internal static MusicTrackNew FromYouTubeVideo(this PlaylistVideo video, string query)
     {
         return new MusicTrackNew
         {

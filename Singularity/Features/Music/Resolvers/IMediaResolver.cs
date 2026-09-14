@@ -2,7 +2,7 @@ using Singularity.Features.Music.Models;
 
 namespace Singularity.Features.Music.Resolvers;
 
-public interface IMediaResolver
+internal interface IMediaResolver
 {
     string Name { get; }
     Task<bool> CanResolveAsync(string query);

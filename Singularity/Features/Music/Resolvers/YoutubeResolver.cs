@@ -6,7 +6,7 @@ using YoutubeExplode.Videos;
 
 namespace Singularity.Features.Music.Resolvers;
 
-public class YoutubeResolver(YoutubeBackend youtubeBackend, ILogger<YoutubeResolver> logger) : IMediaResolver
+internal class YoutubeResolver(YoutubeBackend youtubeBackend, ILogger<YoutubeResolver> logger) : IMediaResolver
 {
     private static readonly HashSet<string> _youTubeDomains = new(StringComparer.OrdinalIgnoreCase)
     {

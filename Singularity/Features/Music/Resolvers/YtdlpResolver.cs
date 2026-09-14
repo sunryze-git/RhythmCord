@@ -6,7 +6,7 @@ using Singularity.Features.Music.Models;
 
 namespace Singularity.Features.Music.Resolvers;
 
-public class YtdlpResolver(ILogger<YtdlpResolver> logger) : IMediaResolver
+internal class YtdlpResolver(ILogger<YtdlpResolver> logger) : IMediaResolver
 {
     public string Name => "YT-DLP";
 

@@ -6,11 +6,11 @@ using NetCord.Services.ApplicationCommands;
 
 namespace Singularity.Features.General;
 
-public class FunCommands(ILogger<FunCommands> logger) : ApplicationCommandModule<ApplicationCommandContext>
+internal class FunCommands(ILogger<FunCommands> logger) : ApplicationCommandModule<ApplicationCommandContext>
 {
     // remove everyone from the VC you are in
     [SlashCommand("snap", "Administrative command only.")]
-    public async Task SnapAsync([SlashCommandParameter(Name = "channel", Description = "Target Channel ID.")] string channelId)
+    internal async Task SnapAsync([SlashCommandParameter(Name = "channel", Description = "Target Channel ID.")] string channelId)
     {
         await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
 

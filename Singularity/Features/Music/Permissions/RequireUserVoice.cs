@@ -3,7 +3,7 @@ using NetCord.Services.ApplicationCommands;
 
 namespace Singularity.Features.Music.Permissions;
 
-public class RequireUserVoiceAttribute : PreconditionAttribute<ApplicationCommandContext>
+internal class RequireUserVoiceAttribute : PreconditionAttribute<ApplicationCommandContext>
 {
     public override ValueTask<PreconditionResult> EnsureCanExecuteAsync(ApplicationCommandContext context, IServiceProvider? services)
     {

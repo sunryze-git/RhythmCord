@@ -8,7 +8,7 @@ using NetCord.Services.ApplicationCommands;
 
 namespace Singularity.Features.Music.Services;
 
-public class PlaybackHandler(
+internal class PlaybackHandler(
     ILogger<PlaybackHandler> logger,
     AudioService audioService,
     QueueManager queueManager,
@@ -24,29 +24,29 @@ public class PlaybackHandler(
     private VoiceClient? _voiceClient;
     private int _isShuttingDown;
 
-    public bool Active =>
+    internal bool Active =>
         _playbackTask?.Status is TaskStatus.Running or TaskStatus.WaitingForActivation or TaskStatus.WaitingToRun;
 
-    public bool Initialized => _voiceClient != null;
+    internal bool Initialized => _voiceClient != null;
 
-    public ImmutableList<MusicTrackNew> SongQueue => queueManager.SongQueue;
-    public MusicTrackNew? CurrentSong => queueManager.CurrentSong;
-    public TimeSpan Duration => CurrentSong?.Duration ?? TimeSpan.Zero;
-    public TimeSpan Position => audioService.Position;
-    public void SkipSong() => _skipSongCts?.Cancel();
-    public void SetContext(ApplicationCommandContext context) => _commandContext = context;
+    internal ImmutableList<MusicTrackNew> SongQueue => queueManager.SongQueue;
+    internal MusicTrackNew? CurrentSong => queueManager.CurrentSong;
+    internal TimeSpan Duration => CurrentSong?.Duration ?? TimeSpan.Zero;
+    internal TimeSpan Position => audioService.Position;
+    internal void SkipSong() => _skipSongCts?.Cancel();
+    internal void SetContext(ApplicationCommandContext context) => _commandContext = context;
 
-    public bool ToggleLooping()
+    internal bool ToggleLooping()
     {
         audioService.Looping = !audioService.Looping;
         return audioService.Looping;
     }
 
-    public void Shuffle() => queueManager.Shuffle();
-    public void Stop() => StopQueue();
-    public Task EndAsync() => LeaveVoiceAsync();
+    internal void Shuffle() => queueManager.Shuffle();
+    internal void Stop() => StopQueue();
+    internal Task EndAsync() => LeaveVoiceAsync();
 
-    public async Task InitializeAsync()
+    internal async Task InitializeAsync()
     {
         _voiceClient = await JoinVoiceAsync();
         _voiceClient.Disconnect += ShutdownAsync;
@@ -67,7 +67,7 @@ public class PlaybackHandler(
         await _commandContext.Client.UpdateVoiceStateAsync(new VoiceStateProperties(_commandContext.Guild.Id, null));
     }
 
-    public void StartQueue()
+    internal void StartQueue()
     {
         logger.LogInformation("Beginning playback of queue.");
         _inactivityCts?.Cancel();
@@ -83,7 +83,7 @@ public class PlaybackHandler(
         }
     }
 
-    public async Task<MusicTrackNew> AddSongAsync(string term, bool next)
+    internal async Task<MusicTrackNew> AddSongAsync(string term, bool next)
     {
         logger.LogInformation("Adding song to queue: {Term}", term);
 

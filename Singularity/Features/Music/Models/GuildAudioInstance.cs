@@ -3,13 +3,13 @@ using NetCord.Services.ApplicationCommands;
 
 namespace Singularity.Features.Music.Models;
 
-public class GuildAudioInstance(PlaybackHandler playbackHandler)
+internal class GuildAudioInstance(PlaybackHandler playbackHandler)
 {
-    public PlaybackHandler PlaybackHandler => playbackHandler;
+    internal PlaybackHandler PlaybackHandler => playbackHandler;
 
-    public void Initialize(ApplicationCommandContext context) => playbackHandler.SetContext(context);
+    internal void Initialize(ApplicationCommandContext context) => playbackHandler.SetContext(context);
 
-    public async Task<MusicTrackNew> EnqueueSongAsync(string term, bool next)
+    internal async Task<MusicTrackNew> EnqueueSongAsync(string term, bool next)
     {
         var song = await PlaybackHandler.AddSongAsync(term, next);
 

@@ -8,10 +8,10 @@ public class QueueManager : IAsyncDisposable
 {
     private readonly List<MusicTrackNew> _songQueue = [];
 
-    public ImmutableList<MusicTrackNew> SongQueue => [.. _songQueue];
-    public MusicTrackNew? CurrentSong => _songQueue.FirstOrDefault();
+    internal ImmutableList<MusicTrackNew> SongQueue => [.. _songQueue];
+    internal MusicTrackNew? CurrentSong => _songQueue.FirstOrDefault();
 
-    public void AddSong(MusicTrackNew song, bool playNext = false)
+    internal void AddSong(MusicTrackNew song, bool playNext = false)
     {
         if (playNext)
             _songQueue.Insert(0, song);
@@ -19,7 +19,7 @@ public class QueueManager : IAsyncDisposable
             _songQueue.Add(song);
     }
 
-    public void AddSong(IEnumerable<MusicTrackNew> songs, bool playNext = false)
+    internal void AddSong(IEnumerable<MusicTrackNew> songs, bool playNext = false)
     {
         if (playNext)
             _songQueue.InsertRange(0, songs);
@@ -27,7 +27,7 @@ public class QueueManager : IAsyncDisposable
             _songQueue.AddRange(songs);
     }
 
-    public void RemoveCurrent()
+    internal void RemoveCurrent()
     {
         if (_songQueue.Count == 0) return;
         var current = CurrentSong;
@@ -36,7 +36,7 @@ public class QueueManager : IAsyncDisposable
         _songQueue.Remove(current);
     }
 
-    public async ValueTask RemoveCurrentAsync()
+    internal async ValueTask RemoveCurrentAsync()
     {
         if (_songQueue.Count == 0) return;
         var current = CurrentSong;
@@ -45,23 +45,23 @@ public class QueueManager : IAsyncDisposable
         _songQueue.Remove(current);
     }
 
-    public void Shuffle()
+    internal void Shuffle()
     {
         if (_songQueue.Count == 0) return;
         _songQueue.Shuffle();
     }
 
-    public void Clear()
+    internal void Clear()
     {
         _songQueue.Clear();
     }
 
-    public async ValueTask ClearAsync()
+    internal async ValueTask ClearAsync()
     {
         _songQueue.Clear();
     }
 
-    public bool IsEmpty() => _songQueue.Count == 0;
+    internal bool IsEmpty() => _songQueue.Count == 0;
 
     public async ValueTask DisposeAsync()
     {

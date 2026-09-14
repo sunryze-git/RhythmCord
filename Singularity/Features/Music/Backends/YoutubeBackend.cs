@@ -7,7 +7,7 @@ using YoutubeExplode.Videos.Streams;
 
 namespace Singularity.Features.Music.Backends;
 
-public class YoutubeBackend(ILogger<YoutubeBackend> logger)
+internal class YoutubeBackend(ILogger<YoutubeBackend> logger)
 {
     private readonly YoutubeClient _client = new();
 

@@ -6,7 +6,7 @@ using NetCord.Services.ApplicationCommands;
 namespace Singularity.Features.Music.Permissions;
 
 // Precondition to ensure the bot is already in a voice channel in the guild
-public class RequireBotInVoiceChannel : PreconditionAttribute<ApplicationCommandContext>
+internal class RequireBotInVoiceChannel : PreconditionAttribute<ApplicationCommandContext>
 {
     public override ValueTask<PreconditionResult> EnsureCanExecuteAsync(ApplicationCommandContext context, IServiceProvider? serviceProvider)
     {

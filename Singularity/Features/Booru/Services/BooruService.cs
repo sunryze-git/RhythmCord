@@ -7,7 +7,7 @@ namespace Singularity.Features.Booru.Services;
 
 public class BooruService(IE621Client client)
 {
-    public async Task<EmbedProperties?> GetRandomPostEmbedAsync(
+    internal async Task<EmbedProperties?> GetRandomPostEmbedAsync(
         string userTags,
         BooruRating? ratingFilter,
         BooruMediaType? typeFilter,
@@ -54,7 +54,7 @@ public class BooruService(IE621Client client)
         return BuildEmbed(post);
     }
 
-    public EmbedProperties BuildEmbed(E621Post post)
+    internal EmbedProperties BuildEmbed(E621Post post)
     {
         var imageUrl = post.GetBestImageUrl();
         var artist = post.ArtistName;

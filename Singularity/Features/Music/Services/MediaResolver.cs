@@ -5,12 +5,12 @@ using Singularity.Features.Music.Resolvers;
 
 namespace Singularity.Features.Music.Services;
 
-public class MediaResolver(
+internal class MediaResolver(
     YoutubeResolver youtubeResolver,
     YtdlpResolver ytdlpResolver,
     ILogger<MediaResolver> logger)
 {
-    public async Task<IReadOnlyList<MusicTrackNew>> ResolveSongsAsync(string query)
+    internal async Task<IReadOnlyList<MusicTrackNew>> ResolveSongsAsync(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
             throw new ArgumentException("Query cannot be null or empty", nameof(query));
@@ -44,7 +44,7 @@ public class MediaResolver(
         }
     }
 
-    public async Task<Stream?> ResolveStreamAsync(MusicTrackNew track)
+    internal async Task<Stream?> ResolveStreamAsync(MusicTrackNew track)
     {
         var sw = Stopwatch.StartNew();
         ArgumentNullException.ThrowIfNull(track);
@@ -66,7 +66,7 @@ public class MediaResolver(
         }
     }
 
-    public void PreFetchStreamInfo(MusicTrackNew track)
+    internal void PreFetchStreamInfo(MusicTrackNew track)
     {
         if (track.Source == SongSource.YouTube)
         {

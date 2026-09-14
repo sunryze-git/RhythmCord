@@ -5,7 +5,7 @@ using NetCord.Services.ApplicationCommands;
 namespace Singularity.Features.Music.Permissions;
 
 // Precondition to ensure the bot has Connect and Speak permissions in the user's voice channel
-public class RequireBotConnectPermission : PreconditionAttribute<ApplicationCommandContext>
+internal class RequireBotConnectPermission : PreconditionAttribute<ApplicationCommandContext>
 {
     public override ValueTask<PreconditionResult> EnsureCanExecuteAsync(ApplicationCommandContext context,
         IServiceProvider? services)
