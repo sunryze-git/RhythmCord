@@ -8,7 +8,7 @@
 
 * **Fast Music:** A music feature capable of YouTube and most major services through YT-DLP.
 * **DM Reminders (In Development):** Direct message scheduled alert system.
-* **Booru Integration (In Development):** Image search through E621.
+* **Booru Integration:** Image search through E621.
 
 ---
 
@@ -65,7 +65,7 @@ dotnet run --project Singularity.csproj
 ```
 ---
 
-## 🎵 Music Command Reference
+## Music Command Reference
 
 | Command | Description |
 | :--- | :--- |
@@ -79,3 +79,8 @@ dotnet run --project Singularity.csproj
 | `/leave` | Disconnect the bot from the voice channel. |
 
 ---
+
+## Booru Command Reference
+| Command | Description |
+| :--- | :--- |
+| `/e621 <tags>` | Searches for a random post with your tags. Supports optional <type> and <rating> filters.
