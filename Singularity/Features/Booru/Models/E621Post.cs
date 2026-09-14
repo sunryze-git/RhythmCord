@@ -19,8 +19,7 @@ public record E621Post(
     /// <summary>
     /// Prefers the compressed JPG sample for fast rendering in Discord embeds, falling back to full file.
     /// </summary>
-    public string? GetBestImageUrl() =>
-        Sample.Has && !string.IsNullOrEmpty(Sample.Url) ? Sample.Url : File.Url;
+    public string? GetBestImageUrl() => Sample.Has && !string.IsNullOrEmpty(Sample.Url) ? Sample.Url : File.Url;
 
     /// <summary>
     /// Direct URL to the post on e621.

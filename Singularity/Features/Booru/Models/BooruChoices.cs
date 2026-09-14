@@ -14,12 +14,9 @@ public enum BooruRating
 
 public enum BooruMediaType
 {
-    [SlashCommandChoice(Name = "Photo (Still Image)")]
+    [SlashCommandChoice(Name = "Photo")]
     Photo,
 
-    [SlashCommandChoice(Name = "Gif (Animated Image)")]
+    [SlashCommandChoice(Name = "Gif")]
     Gif,
-
-    [SlashCommandChoice(Name = "Video (MP4 / WebM)")]
-    Video
 }

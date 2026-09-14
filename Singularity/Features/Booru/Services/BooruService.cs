@@ -36,7 +36,6 @@ public class BooruService(IE621Client client)
             {
                 BooruMediaType.Photo => "-animated -type:webm -type:mp4 -type:swf",
                 BooruMediaType.Gif => "type:gif",
-                BooruMediaType.Video => "-type:png -type:jpg -type:jpeg -type:gif",
                 _ => null
             };
 
@@ -49,27 +48,6 @@ public class BooruService(IE621Client client)
         var finalTagQuery = string.Join(" ", tagList);
         var posts = await client.GetPostsAsync(finalTagQuery, limit: 10, cancellationToken);
 
-        if (typeFilter.HasValue && posts.Count > 0)
-        {
-            posts = typeFilter.Value switch
-            {
-                BooruMediaType.Photo => [.. posts.Where(p =>
-                    p.File.Ext is "png" or "jpg" or "jpeg" or "webp" &&
-                    !p.Tags.General.Contains("animated") &&
-                    !p.Tags.Meta.Contains("animated"))],
-
-                BooruMediaType.Gif => [.. posts.Where(p =>
-                    p.File.Ext is "gif" ||
-                    p.Tags.General.Contains("animated") ||
-                    p.Tags.Meta.Contains("animated"))],
-
-                BooruMediaType.Video => [.. posts.Where(p =>
-                    p.File.Ext is "webm" or "mp4" or "swf")],
-
-                _ => posts
-            };
-        }
-
         var post = posts.FirstOrDefault();
         if (post is null) return null;
 
@@ -78,26 +56,20 @@ public class BooruService(IE621Client client)
 
     public EmbedProperties BuildEmbed(E621Post post)
     {
-        var isVideo = post.File.Ext is "webm" or "mp4" or "swf";
-        var isGif = post.File.Ext is "gif" || post.Tags.General.Contains("animated");
-
-        // Media format badge indicator
-        var mediaBadge = isVideo ? "🎥 [VIDEO]" : isGif ? "🎞️ [GIF]" : "🖼️ [IMAGE]";
         var imageUrl = post.GetBestImageUrl();
         var artist = post.ArtistName;
         var sourceUrl = post.Sources?.FirstOrDefault();
 
         var description = $"""
-            **Format**: `{mediaBadge}` (`.{post.File.Ext}`)
-            **Rating**: `{post.Rating.ToUpper()}` | **Score**: `{post.Score.Total}` (👍 {post.Score.Up} / 👎 {post.Score.Down}) | **Favs**: `{post.FavCount}`
-            **Artist**: {artist}
-            {(string.IsNullOrEmpty(sourceUrl) ? "" : $"**[Original Source]({sourceUrl})**")}
-            {(isVideo && !string.IsNullOrEmpty(post.File.Url) ? $"\n🎬 **[Direct Video Link]({post.File.Url})**" : "")}
+            **Score**:  `{post.Score.Total} ({post.Score.Up} / {post.Score.Down})`
+            **Rating**: `{post.Rating.ToUpper()}`
+            **Favs**:   `{post.FavCount}`
+            {(string.IsNullOrEmpty(sourceUrl) ? "" : $"**[Source]({sourceUrl})**")}
             """;
 
         var embed = new EmbedProperties
         {
-            Title = $"{mediaBadge} e621 Post #{post.Id}",
+            Title = $"e621 Post #{post.Id}",
             Url = post.WebUrl,
             Description = description,
             Color = post.Rating switch
