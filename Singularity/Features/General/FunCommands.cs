@@ -2,16 +2,22 @@ using Microsoft.Extensions.Logging;
 
 using NetCord;
 using NetCord.Rest;
+using NetCord.Services;
 using NetCord.Services.ApplicationCommands;
+using Singularity.Observability;
 
 namespace Singularity.Features.General;
 
-internal class FunCommands(ILogger<FunCommands> logger) : ApplicationCommandModule<ApplicationCommandContext>
+public class FunCommands(ILogger<FunCommands> logger, BotMetrics metrics) : ApplicationCommandModule<ApplicationCommandContext>
 {
-    // remove everyone from the VC you are in
+    // remove everyone from the given voice channel
     [SlashCommand("snap", "Administrative command only.")]
-    internal async Task SnapAsync([SlashCommandParameter(Name = "channel", Description = "Target Channel ID.")] string channelId)
+    [RequireUserPermissions<ApplicationCommandContext>(Permissions.MoveUsers)]
+    public async Task SnapAsync([SlashCommandParameter(Name = "channel", Description = "Target Channel ID.")] string channelId)
     {
+        metrics.Command("snap");
+        using var scope = logger.BeginScope("guild={GuildId} user={UserId}", Context.Guild?.Id, Context.User.Id);
+
         await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
 
         // Determine if this is a valid ID
@@ -31,12 +37,12 @@ internal class FunCommands(ILogger<FunCommands> logger) : ApplicationCommandModu
         }
 
         // Get the users in that voice channel
-        var guild = await Context.Client.Rest.GetGuildAsync(Context.Guild.Id);
-        var usersInVc = Context.Guild.VoiceStates
+        var guildId = Context.Guild.Id;
+        var userIds = Context.Guild.VoiceStates
             .Where(vs => vs.Value.ChannelId == channelIdValue)
-            .Select(async vs => await guild.GetUserAsync(vs.Key))
+            .Select(vs => vs.Key)
             .ToArray();
-        if (usersInVc.Length == 0)
+        if (userIds.Length == 0)
         {
             await ModifyResponseAsync(message =>
                 message.Content = "There is nobody in the voice channel to remove.");
@@ -44,22 +50,25 @@ internal class FunCommands(ILogger<FunCommands> logger) : ApplicationCommandModu
         }
 
         // Remove the users from the voice channel
-        foreach (var user in usersInVc)
+        var removed = 0;
+        foreach (var userId in userIds)
+        {
             try
             {
-                var userObject = await user;
                 // Attempt to disconnect the user from the voice channel
-                await userObject.ModifyAsync(act => { act.ChannelId = 0; });
+                await Context.Client.Rest.ModifyGuildUserAsync(guildId, userId, act => { act.ChannelId = 0; });
+                removed++;
             }
             catch (Exception ex)
             {
                 // Log the error if we cannot remove a user
-                logger.LogWarning("Failed to remove user {UserId} from voice channel: {ExMessage}", user.Id,
-                    ex.Message);
+                logger.LogWarning("Failed to remove user {UserId} from voice channel: {ExMessage}", userId, ex.Message);
             }
+        }
 
         await ModifyResponseAsync(message =>
-            message.Content =
-                $"Removed {usersInVc.Length} users from the voice channel. If nobody was removed, I do not have permission to do so.");
+            message.Content = removed == userIds.Length
+                ? $"Removed {removed} user(s) from the voice channel."
+                : $"Removed {removed} of {userIds.Length} user(s). I may be missing permission to move the others.");
     }
 }

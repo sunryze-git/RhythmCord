@@ -2,75 +2,157 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Singularity.Features.Music.Models;
 using Singularity.Features.Music.Resolvers;
+using Singularity.Infrastructure;
+using Singularity.Observability;
 
 namespace Singularity.Features.Music.Services;
 
-internal class MediaResolver(
-    YoutubeResolver youtubeResolver,
-    YtdlpResolver ytdlpResolver,
-    ILogger<MediaResolver> logger)
+/// <summary>What the player needs from the media layer. Lets the player be tested without any network or process.</summary>
+internal interface ITrackSource
 {
-    internal async Task<IReadOnlyList<MusicTrackNew>> ResolveSongsAsync(string query)
+    /// <summary>Finds tracks for a query. Empty means nothing matched; a failure to look is thrown.</summary>
+    Task<IReadOnlyList<MusicTrackNew>> ResolveSongsAsync(string query);
+
+    /// <summary>Opens the track's audio, or throws <see cref="StreamUnavailableException" /> saying why it can't.</summary>
+    Task<Stream> ResolveStreamAsync(MusicTrackNew track);
+
+    void PreFetch(MusicTrackNew track);
+}
+
+/// <summary>
+///     Tries the registered resolvers in the configured order (Music:ResolverOrder). The first one that finds something
+///     wins; streaming prefers the resolver that produced the track and falls back to the others.
+///     "Nothing found" and "could not look" are different outcomes and are reported differently.
+/// </summary>
+internal sealed class MediaResolver : ITrackSource
+{
+    private readonly IReadOnlyList<IMediaResolver> _resolvers;
+    private readonly BotMetrics _metrics;
+    private readonly ILogger<MediaResolver> _logger;
+
+    public MediaResolver(IEnumerable<IMediaResolver> resolvers, MusicOptions options, BotMetrics metrics, ILogger<MediaResolver> logger)
+    {
+        _metrics = metrics;
+        _logger = logger;
+        _resolvers = Order(resolvers.ToList(), options.EffectiveResolverOrder, logger);
+    }
+
+    internal IReadOnlyList<IMediaResolver> Resolvers => _resolvers;
+
+    public async Task<IReadOnlyList<MusicTrackNew>> ResolveSongsAsync(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
-            throw new ArgumentException("Query cannot be null or empty", nameof(query));
+            throw new SearchException("The search query cannot be empty.");
 
-        logger.LogInformation("Resolving songs for query: {Query}", query);
+        _logger.LogDebug("Resolving songs for query: {Query}", query);
+        _metrics.ResolveRequested();
+        var sw = Stopwatch.StartNew();
 
-        // 1. Try YoutubeExplode first
-        if (await youtubeResolver.CanResolveAsync(query))
+        var failures = new List<Exception>();
+        var anyAnswered = false; // at least one resolver ran to completion (even if it found nothing)
+
+        foreach (var resolver in _resolvers)
         {
             try
             {
-                var results = await youtubeResolver.ResolveAsync(query);
-                if (results.Count > 0) return results;
+                if (!await resolver.CanResolveAsync(query)) continue;
+
+                var results = await resolver.ResolveAsync(query);
+                anyAnswered = true;
+                if (results.Count == 0) continue;
+
+                _metrics.ResolvedBy(resolver.Name);
+                _metrics.ResolveTime(sw.ElapsedMilliseconds);
+                return results;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException and not SearchException)
+            {
+                failures.Add(ex);
+                _logger.LogWarning(ex, "{Resolver} failed for query '{Query}'; trying the next resolver.", resolver.Name, query);
+            }
+        }
+
+        _metrics.ResolveTime(sw.ElapsedMilliseconds);
+
+        // Nobody could even look: that is an outage, not "no results". Say so, with the most telling reason.
+        if (!anyAnswered && failures.Count > 0)
+        {
+            _metrics.Error("lookup.failed");
+            throw new LookupFailedException(FailureDescriber.Describe(failures[^1]), failures[^1]);
+        }
+
+        _metrics.ResolveNoResults();
+        return [];
+    }
+
+    public async Task<Stream> ResolveStreamAsync(MusicTrackNew track)
+    {
+        ArgumentNullException.ThrowIfNull(track);
+        var sw = Stopwatch.StartNew();
+
+        // The resolver that produced the track goes first, then every other resolver able to stream it.
+        var candidates = _resolvers.Where(r => r.Source == track.Source && r.CanStream(track))
+            .Concat(_resolvers.Where(r => r.Source != track.Source && r.CanStream(track)))
+            .ToList();
+
+        Exception? last = null;
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            var resolver = candidates[i];
+            try
+            {
+                var stream = await resolver.GetStreamAsync(track)
+                             ?? throw new ResolverFailedException($"{resolver.Name} returned no stream");
+
+                _metrics.StreamTime(sw.ElapsedMilliseconds);
+                _logger.LogDebug("Resolved stream for '{Title}' via {Resolver} in {ElapsedMs} ms.", track.Title, resolver.Name, sw.ElapsedMilliseconds);
+                return stream;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                last = ex;
+                var hasFallback = i + 1 < candidates.Count;
+                if (hasFallback) _metrics.StreamFallback();
+
+                _logger.Log(hasFallback ? LogLevel.Warning : LogLevel.Error, ex,
+                    "{Resolver} could not stream '{Title}'{Next}", resolver.Name, track.Title,
+                    hasFallback ? $", falling back to {candidates[i + 1].Name}." : ".");
+            }
+        }
+
+        _metrics.StreamTime(sw.ElapsedMilliseconds);
+        throw new StreamUnavailableException(
+            last is null ? "there is no way to play this kind of source" : FailureDescriber.Describe(last), last);
+    }
+
+    public void PreFetch(MusicTrackNew track)
+    {
+        foreach (var resolver in _resolvers.Where(r => r.Source == track.Source))
+        {
+            try
+            {
+                resolver.PreFetch(track);
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "YouTubeExplode failed for query: {Query}, falling back to yt-dlp.", query);
+                _logger.LogDebug(ex, "Pre-fetch failed for '{Title}'.", track.Title);
             }
         }
-
-        // 2. Fallback to yt-dlp for non-YouTube links or failed YouTube requests
-        try
-        {
-            logger.LogInformation("Attempting resolution with YT-DLP for query: {Query}", query);
-            return await ytdlpResolver.ResolveAsync(query);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "YT-DLP resolution failed for query: {Query}", query);
-            return [];
-        }
     }
 
-    internal async Task<Stream?> ResolveStreamAsync(MusicTrackNew track)
+    // Configured names first (in that order); resolvers the config forgot to mention stay available at the end.
+    internal static List<IMediaResolver> Order(List<IMediaResolver> all, IReadOnlyList<string> configured, ILogger logger)
     {
-        var sw = Stopwatch.StartNew();
-        ArgumentNullException.ThrowIfNull(track);
+        var ordered = new List<IMediaResolver>();
 
-        try
+        foreach (var name in configured)
         {
-            IMediaResolver resolver = track.Source == SongSource.YouTube
-                ? youtubeResolver
-                : ytdlpResolver;
+            var match = all.FirstOrDefault(r => r.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (match is null) logger.LogWarning("Music:ResolverOrder lists unknown resolver '{Name}'; ignoring it.", name);
+            else if (!ordered.Contains(match)) ordered.Add(match);
+        }
 
-            var stream = await resolver.GetStreamAsync(track);
-            logger.LogInformation("Resolved stream for '{Title}' in {ElapsedMs} ms.", track.Title, sw.ElapsedMilliseconds);
-            return stream;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to resolve stream for song: {Song}", track.Title);
-            return null;
-        }
-    }
-
-    internal void PreFetchStreamInfo(MusicTrackNew track)
-    {
-        if (track.Source == SongSource.YouTube)
-        {
-            youtubeResolver.PreFetchStreamInfo(track);
-        }
+        ordered.AddRange(all.Where(r => !ordered.Contains(r)));
+        return ordered;
     }
 }

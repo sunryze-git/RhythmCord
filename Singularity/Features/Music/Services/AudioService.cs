@@ -1,26 +1,18 @@
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging;
-using NetCord.Gateway.Voice;
+using Singularity.Infrastructure;
+using Singularity.Observability;
 
 namespace Singularity.Features.Music.Services;
 
-internal interface IAudioService : IAsyncDisposable
+internal sealed class AudioDecodingException(string message) : Exception(message);
+
+/// <summary>Decodes a media stream with FFmpeg and feeds it to Discord. One instance per guild.</summary>
+internal class AudioService(ILogger<AudioService> logger, MusicOptions options, BotMetrics metrics)
 {
-    bool Looping { get; set; }
-    TimeSpan Position { get; }
-
-    Task StartAudioStreamAsync(Stream inStream, OpusEncodeStream outStream, CancellationToken stopToken, CancellationToken serviceToken = default);
-}
-
-internal class AudioService(ILogger<AudioService> logger) : IAudioService
-{
-    private long _consumedBytes;
-
-    public TimeSpan Position => TimeSpan.FromTicks((long)(Volatile.Read(ref _consumedBytes) / BytesPerSecond * TimeSpan.TicksPerSecond));
-    public bool Looping { get; set; }
-
-    private readonly Lock _lock = new();
-    private CancellationTokenSource? _active;
+    // EBU R128-style loudness normalisation so quiet and loud tracks play at a similar volume (Music:Normalize).
+    private const string LoudnessFilter = "loudnorm=I=-16:TP=-1.5:LRA=11";
 
     private const int SampleRate = 48000;
     private const int Channels = 2;
@@ -28,164 +20,162 @@ internal class AudioService(ILogger<AudioService> logger) : IAudioService
     private const int FrameSize = SampleRate * Channels * sizeof(short) * FrameDurationMs / 1000;
     private const double BytesPerSecond = SampleRate * Channels * sizeof(short);
 
-    Task IAudioService.StartAudioStreamAsync(Stream inStream, OpusEncodeStream outStream, CancellationToken stopToken, CancellationToken serviceToken)
-    {
-        return StartAudioStreamAsync(inStream, outStream, stopToken, serviceToken);
-    }
+    private long _consumedBytes;
 
-    internal async Task StartAudioStreamAsync(Stream inStream, OpusEncodeStream outStream, CancellationToken stopToken, CancellationToken serviceToken = default)
+    public TimeSpan Position =>
+        TimeSpan.FromTicks((long)(Volatile.Read(ref _consumedBytes) / BytesPerSecond * TimeSpan.TicksPerSecond));
+
+    /// <summary>Plays the stream once. Cancelling 'stopToken' ends playback quietly (no exception).</summary>
+    internal async Task StartAudioStreamAsync(Stream inStream, Stream outStream, CancellationToken stopToken)
     {
         ArgumentNullException.ThrowIfNull(inStream);
         ArgumentNullException.ThrowIfNull(outStream);
 
-        var linked = CancellationTokenSource.CreateLinkedTokenSource(stopToken, serviceToken);
-        lock (_lock) { _active = linked; }
-
         if (!inStream.CanRead)
             throw new ArgumentException("Input stream must be readable.", nameof(inStream));
 
-        logger.LogInformation("Beginning audio stream processing via FFmpeg CLI.");
-        var loopCount = 0;
+        logger.LogDebug("Beginning audio stream processing via FFmpeg CLI.");
 
         try
         {
-            do
-            {
-                loopCount++;
-                logger.LogInformation("Starting song playback iteration {LoopCount}.", loopCount);
-
-                if (loopCount > 1)
-                {
-                    if (!inStream.CanSeek)
-                    {
-                        logger.LogWarning("Stream does not support seeking. Cannot loop properly.");
-                        Looping = false;
-                        break;
-                    }
-                    inStream.Seek(0, SeekOrigin.Begin);
-                }
-
-                await ConvertToPcmAsync(inStream, outStream, linked.Token);
-            } while (Looping && !linked.IsCancellationRequested);
+            await ConvertToPcmAsync(inStream, outStream, stopToken);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (stopToken.IsCancellationRequested)
         {
-            logger.LogWarning("Audio stream playback was cancelled by request.");
+            logger.LogDebug("Audio stream playback was cancelled by request.");
         }
-
-        logger.LogDebug("Flushing Discord audio stream.");
-        await outStream.FlushAsync();
+        finally
+        {
+            logger.LogDebug("Flushing Discord audio stream.");
+            try
+            {
+                await outStream.FlushAsync();
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Failed to flush Discord audio stream.");
+            }
+        }
     }
 
-    private async Task ConvertToPcmAsync(Stream inputStream, OpusEncodeStream outputStream, CancellationToken linkedToken)
+    private async Task ConvertToPcmAsync(Stream inputStream, Stream outputStream, CancellationToken token)
     {
-        _consumedBytes = 0; // reset position per song/loop iteration
+        Interlocked.Exchange(ref _consumedBytes, 0); // reset position per song/loop iteration
 
         var psi = new ProcessStartInfo
         {
             FileName = "ffmpeg",
-            Arguments = "-hide_banner -loglevel error -i pipe:0 -f s16le -ar 48000 -ac 2 pipe:1",
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        var args = new List<string> { "-hide_banner", "-loglevel", "error", "-i", "pipe:0" };
+        if (options.Normalize) args.AddRange(["-af", LoudnessFilter]);
+        args.AddRange(["-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"]);
+        foreach (var arg in args)
+            psi.ArgumentList.Add(arg);
 
         using var process = new Process { StartInfo = psi };
-
         if (!process.Start())
-        {
             throw new InvalidOperationException("Failed to start FFmpeg process.");
-        }
+        using var ffmpegActive = metrics.TrackFfmpeg();
 
-        // Pump stdin asynchronously
-        var writeTask = Task.Run(async () =>
-        {
-            try
-            {
-                await inputStream.CopyToAsync(process.StandardInput.BaseStream, linkedToken);
-            }
-            catch (Exception ex) when (process.HasExited || ex is OperationCanceledException)
-            {
-                // Ignore pipe breakage if process terminated early or was cancelled
-            }
-            finally
-            {
-                process.StandardInput.BaseStream.Close();
-            }
-        }, linkedToken);
+        // Cancelling this tears down both pumps as soon as either one fails.
+        using var pipeCts = CancellationTokenSource.CreateLinkedTokenSource(token);
 
-        // Read stdout with exact 20ms frame boundaries
-        var readTask = Task.Run(async () =>
-        {
-            var buffer = new byte[FrameSize];
-            var stdout = process.StandardOutput.BaseStream;
+        var errorTask = process.StandardError.ReadToEndAsync();
+        errorTask.Observe();
 
-            while (!linkedToken.IsCancellationRequested)
-            {
-                var bytesRead = 0;
-                var totalBytes = Volatile.Read(ref _consumedBytes);
-
-                while (bytesRead < FrameSize)
-                {
-                    var read = await stdout.ReadAsync(buffer.AsMemory(bytesRead, FrameSize - bytesRead), linkedToken);
-                    if (read == 0) break; // EOF reached
-                    bytesRead += read;
-                }
-
-                if (bytesRead == 0) break;
-
-                totalBytes += bytesRead;
-                Volatile.Write(ref _consumedBytes, totalBytes);
-
-                if (bytesRead < FrameSize)
-                {
-                    Array.Clear(buffer, bytesRead, FrameSize - bytesRead);
-                }
-
-                await outputStream.WriteAsync(buffer.AsMemory(0, FrameSize), linkedToken);
-            }
-        }, linkedToken);
-
-        var errorTask = process.StandardError.ReadToEndAsync(linkedToken);
+        var writeTask = Task.Run(() => GuardAsync(() => PumpInputAsync(inputStream, process, pipeCts.Token), pipeCts));
+        var readTask = Task.Run(() => GuardAsync(() => PumpOutputAsync(process, outputStream, pipeCts.Token), pipeCts));
+        var pumps = Task.WhenAll(writeTask, readTask);
 
         try
         {
-            await Task.WhenAll(writeTask, readTask);
-            await process.WaitForExitAsync(linkedToken);
+            await pumps;
+            await process.WaitForExitAsync(token);
         }
-        catch (OperationCanceledException)
+        catch (Exception ex)
         {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+
+            // One pump failing cancels the other; surface the real failure, not the induced cancellation.
+            if (!token.IsCancellationRequested && ex is OperationCanceledException &&
+                pumps.Exception?.InnerExceptions.FirstOrDefault(e => e is not OperationCanceledException) is { } real)
+                ExceptionDispatchInfo.Capture(real).Throw();
+
             throw;
         }
 
         if (process.ExitCode != 0)
         {
             var errorLog = await errorTask;
-            throw new InvalidOperationException($"FFmpeg process exited with code {process.ExitCode}: {errorLog}");
+            throw new AudioDecodingException($"FFmpeg process exited with code {process.ExitCode}: {errorLog}");
         }
     }
 
-    public ValueTask DisposeAsync()
+    private static async Task GuardAsync(Func<Task> work, CancellationTokenSource pipeCts)
     {
-        lock (_lock)
+        try
+        {
+            await work();
+        }
+        catch
+        {
+            pipeCts.Cancel();
+            throw;
+        }
+    }
+
+    private static async Task PumpInputAsync(Stream inputStream, Process process, CancellationToken token)
+    {
+        try
+        {
+            await inputStream.CopyToAsync(process.StandardInput.BaseStream, token);
+        }
+        catch (Exception ex) when (process.HasExited || ex is OperationCanceledException)
+        {
+            // Ignore pipe breakage if process terminated early or was cancelled
+        }
+        finally
         {
             try
             {
-                _active?.Cancel();
+                process.StandardInput.BaseStream.Close();
             }
-            catch (ObjectDisposedException) { }
-
-            _active?.Dispose();
-            _active = null;
+            catch (IOException)
+            {
+                // FFmpeg already closed its end.
+            }
         }
+    }
 
-        GC.SuppressFinalize(this);
-        return ValueTask.CompletedTask;
+    // Read stdout with exact 20ms frame boundaries
+    private async Task PumpOutputAsync(Process process, Stream outputStream, CancellationToken token)
+    {
+        var buffer = new byte[FrameSize];
+        var stdout = process.StandardOutput.BaseStream;
+
+        while (!token.IsCancellationRequested)
+        {
+            var filled = 0;
+            while (filled < FrameSize)
+            {
+                var read = await stdout.ReadAsync(buffer.AsMemory(filled, FrameSize - filled), token);
+                if (read == 0) break; // EOF reached
+                filled += read;
+            }
+
+            if (filled == 0) break;
+
+            if (filled < FrameSize)
+                Array.Clear(buffer, filled, FrameSize - filled);
+
+            Interlocked.Add(ref _consumedBytes, filled);
+            metrics.AudioBytes(filled);
+            await outputStream.WriteAsync(buffer.AsMemory(0, FrameSize), token);
+        }
     }
 }

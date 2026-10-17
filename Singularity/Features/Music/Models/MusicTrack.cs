@@ -1,19 +1,12 @@
-using System.Diagnostics.CodeAnalysis;
-using YoutubeExplode.Playlists;
-using YoutubeExplode.Videos;
-using YoutubeExplode.Videos.Streams;
-
 namespace Singularity.Features.Music.Models;
 
 internal enum SongSource
 {
-    Cobalt,
-    Direct,
-    SoundCloud,
     YouTube,
     Ytdlp
 }
 
+/// <summary>Provider-neutral description of a track. Any provider-specific state lives in its resolver.</summary>
 internal class MusicTrackNew
 {
     public required string Query { get; init; }
@@ -27,45 +20,6 @@ internal class MusicTrackNew
     // Optional provider-specific ID (e.g. YouTube VideoId string)
     public string? MediaId { get; init; }
 
-    // Deferred background stream resolution (pre-fetches IStreamInfo without opening sockets)
-    public Task<IStreamInfo>? PreResolvedStreamInfoTask { get; set; }
-
-    [MemberNotNullWhen(true, nameof(PreResolvedStreamInfoTask))]
-    public bool IsPreResolving => PreResolvedStreamInfoTask is { IsCompleted: false };
-
-    [MemberNotNullWhen(true, nameof(PreResolvedStreamInfoTask))]
-    public bool IsPreResolved => PreResolvedStreamInfoTask is { IsCompletedSuccessfully: true };
-}
-
-internal static class MusicTrackExtensions
-{
-    internal static MusicTrackNew FromYouTubeVideo(this IVideo video, string query)
-    {
-        return new MusicTrackNew
-        {
-            Query = query,
-            Url = video.Url,
-            Title = video.Title,
-            Author = video.Author.ChannelTitle,
-            Duration = video.Duration,
-            ThumbnailUrl = video.Thumbnails.OrderByDescending(t => t.Resolution.Area).FirstOrDefault()?.Url,
-            Source = SongSource.YouTube,
-            MediaId = video.Id.Value
-        };
-    }
-
-    internal static MusicTrackNew FromYouTubeVideo(this PlaylistVideo video, string query)
-    {
-        return new MusicTrackNew
-        {
-            Query = query,
-            Url = video.Url,
-            Title = video.Title,
-            Author = video.Author.ChannelTitle,
-            Duration = video.Duration,
-            ThumbnailUrl = video.Thumbnails.OrderByDescending(t => t.Resolution.Area).FirstOrDefault()?.Url,
-            Source = SongSource.YouTube,
-            MediaId = video.Id.Value
-        };
-    }
+    // Discord user id of whoever queued the track (0 = unknown). Used for skip permissions.
+    public ulong RequestedBy { get; set; }
 }

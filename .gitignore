@@ -52,3 +52,7 @@ artifacts/
 *.nuget.targets
 Singularity/appsettings.json
 Singularity/.venv/
+
+# Nix build output
+result
+result-*

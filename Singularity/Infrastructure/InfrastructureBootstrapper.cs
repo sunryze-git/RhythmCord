@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using FFmpeg.Loader;
 using Microsoft.Extensions.DependencyInjection;
 using Singularity.Features.Music.Backends;
 using Singularity.Features.Music.Models;
 using Singularity.Features.Music.Resolvers;
+using Singularity.Features.Music.Player;
 using Singularity.Features.Music.Services;
 using NetCord.Gateway.Voice;
 using Singularity.Features.Booru.Clients;
@@ -14,65 +14,89 @@ namespace Singularity.Infrastructure;
 
 public static class InfrastructureBootstrapper
 {
+    /// <summary>
+    ///     Starts the external-tool checks in the background (yt-dlp alone takes ~0.4s to report its version) so they
+    ///     overlap with host construction. Await the returned task before the bot starts handling work.
+    /// </summary>
+    internal static Task StartToolChecks() => Task.WhenAll(
+        Task.Run(() => RequireExecutable("ffmpeg", "-version")),
+        Task.Run(() => RequireExecutable("yt-dlp", "--version")));
+
+    /// <summary>Fast, synchronous native-library setup that must happen before any voice code runs.</summary>
     internal static void Initialize()
     {
-        LoadFfmpegLibraries();
         RegisterOpusDllImportResolver();
 
         // Fail-fast check to ensure the environment is ready
         if (!CheckOpusLibrary())
         {
-            throw new DllNotFoundException(
-                "Required native library 'libopus' was not found. Please in(89%)stall libopus (e.g., 'apt install libopus0').");
+            throw new StartupException(
+                "Required native library 'libopus' was not found. Please install libopus (e.g., 'apt install libopus0').");
         }
     }
 
     public static IServiceCollection AddMusicFeature(this IServiceCollection services)
     {
-        // Core Audio & Dispatch Services
-        services.AddSingleton<AudioService>();
+        // Shared, stateless services
         services.AddSingleton<GuildAudioInstanceOrchestrator>();
         services.AddSingleton<MediaResolver>();
+        services.AddSingleton<ITrackSource>(sp => sp.GetRequiredService<MediaResolver>());
 
-        // Backends & Concrete Resolvers
+        // Backends and resolvers; MediaResolver tries them in the order set by Music:ResolverOrder.
         services.AddSingleton<YoutubeBackend>();
         services.AddSingleton<YoutubeResolver>();
         services.AddSingleton<YtdlpResolver>();
+        services.AddSingleton<IMediaResolver>(sp => sp.GetRequiredService<YoutubeResolver>());
+        services.AddSingleton<IMediaResolver>(sp => sp.GetRequiredService<YtdlpResolver>());
 
-        // Transient Guild State Controllers
-        services.AddTransient<QueueManager>();
-        services.AddTransient<PlaybackHandler>();
-        services.AddTransient<GuildAudioInstance>();
+        // Per-guild state: one of each per guild, because the orchestrator resolves them inside a scope per guild.
+        services.AddScoped<AudioService>();
+        services.AddScoped<DiscordVoiceSession>();
+        services.AddScoped<IVoiceSession>(sp => sp.GetRequiredService<DiscordVoiceSession>());
+        services.AddScoped<ITrackPlayer>(sp => sp.GetRequiredService<DiscordVoiceSession>());
+        services.AddScoped<ChannelNotifier>();
+        services.AddScoped<IPlayerNotifier>(sp => sp.GetRequiredService<ChannelNotifier>());
+        services.AddScoped<GuildPlayer>();
+        services.AddScoped<GuildAudioInstance>();
 
         return services;
     }
 
     public static IServiceCollection AddBooruFeature(this IServiceCollection services)
     {
-        services.AddHttpClient<IE621Client, E621Client>(client =>
-        {
-            client.BaseAddress = new Uri("https://e621.net/");
-        });
+        // E621Client sets its own base address and User-Agent.
+        services.AddHttpClient<IE621Client, E621Client>();
         services.AddSingleton<BooruService>();
 
         return services;
     }
 
-    private static void LoadFfmpegLibraries()
+    private static void RequireExecutable(string name, string versionArgument)
     {
         try
         {
-            Process.Start(new ProcessStartInfo
+            using var process = Process.Start(new ProcessStartInfo
             {
-                FileName = "ffmpeg",
-                Arguments = "-version",
+                FileName = name,
+                ArgumentList = { versionArgument },
                 UseShellExecute = false,
                 CreateNoWindow = true,
-            });
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            }) ?? throw new InvalidOperationException("The process could not be started.");
+
+            if (!process.WaitForExit(TimeSpan.FromSeconds(10)))
+            {
+                process.Kill();
+                throw new TimeoutException($"'{name} {versionArgument}' did not finish in time.");
+            }
+
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException($"'{name} {versionArgument}' exited with code {process.ExitCode}.");
         }
-        catch
+        catch (Exception ex)
         {
-            throw new InvalidOperationException("FFmpeg executable could not be found.");
+            throw new StartupException($"Required program '{name}' could not be run. Make sure it is installed and on PATH.", ex);
         }
     }
 
@@ -117,6 +141,4 @@ public static class InfrastructureBootstrapper
             return IntPtr.Zero;
         });
     }
-
-
 }

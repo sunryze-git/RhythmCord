@@ -8,22 +8,30 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
         <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+        <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
+        <LangVersion>14</LangVersion>
+        <TieredPGO>false</TieredPGO>
+        <UserSecretsId>ae5d135e-a4f5-4c15-950b-9e1a2021dad3</UserSecretsId>
+    </PropertyGroup>
 
-        <PublishSingleFile>true</PublishSingleFile>
+    <!-- A plain build/run/test is framework-dependent (fast, no extra packs). `dotnet publish` produces a standalone,
+         precompiled (ReadyToRun) single file. The offline Nix build overrides these with -p:SelfContained=false etc. -->
+    <PropertyGroup Condition="'$(_IsPublishing)' == 'true'">
         <SelfContained>true</SelfContained>
+        <PublishSingleFile>true</PublishSingleFile>
         <PublishTrimmed>true</PublishTrimmed>
         <TrimMode>link</TrimMode>
-        <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-        <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
+        <PublishReadyToRun>true</PublishReadyToRun>
+        <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
         <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-        <LangVersion>14</LangVersion>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Concentus.Oggfile" Version="1.0.7" />
+        <EmbeddedResource Include="Observability\dashboard.html" LogicalName="dashboard.html" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="DisCatSharp.Voice.Natives" Version="10.7.0" />
-        <PackageReference Include="FFmpeg.AutoGen" Version="8.1.0" />
-        <PackageReference Include="FFmpeg.Loader" Version="3.0.2" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.2" />
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.2" />
         <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.2" />
@@ -36,13 +44,11 @@
     </ItemGroup>
 
     <ItemGroup>
+        <!-- Local runs read appsettings.json from the build output, but a published build must never ship a token. -->
         <None Update="appsettings.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToPublishDirectory>Never</CopyToPublishDirectory>
         </None>
-    </ItemGroup>
-
-    <ItemGroup>
-        <Folder Include="Utilities\" />
     </ItemGroup>
 
     <ItemGroup>

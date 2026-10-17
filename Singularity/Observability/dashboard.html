@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Singularity</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --ink: #1a1d23; --muted: #6b7280; --line: #e3e6eb;
+    --accent: #3b6cf6; --good: #17a05d; --warn: #c98a05; --bad: #d63a3a; --bar: #dbe4ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --panel: #171a21; --ink: #e8eaee; --muted: #8b93a1; --line: #262b35;
+      --accent: #6c8cff; --good: #3ac47d; --warn: #e0a82e; --bad: #f06060; --bar: #26324f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: .2px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid var(--line);
+          border-radius: 999px; background: var(--panel); color: var(--muted); font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--good); } .dot.bad { background: var(--bad); }
+  .spacer { flex: 1; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); margin-bottom: 16px; }
+  .card, section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .card { padding: 12px 14px; }
+  .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
+  .card .value { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .card .sub { color: var(--muted); font-size: 12px; }
+  .cols { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); margin-bottom: 16px; }
+  section { padding: 14px 16px; }
+  h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 4px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; padding-left: 12px; }
+  .barrow { display: grid; grid-template-columns: 90px 1fr 60px; gap: 8px; align-items: center; margin: 5px 0; }
+  .bar { height: 8px; background: var(--bar); border-radius: 4px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--accent); }
+  svg.spark { width: 100%; height: 44px; display: block; }
+  svg.spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+  .tools { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  button, select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+  #log { max-height: 380px; overflow: auto; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #log div { padding: 1px 0; white-space: pre-wrap; word-break: break-word; }
+  #log .t { color: var(--muted); } #log .c { color: var(--accent); }
+  #log .warn .l { color: var(--warn); } #log .error .l { color: var(--bad); } #log .info .l { color: var(--good); }
+  footer { color: var(--muted); font-size: 12px; margin-top: 18px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Singularity</h1>
+    <span class="pill"><span class="dot" id="conn-dot"></span><span id="conn-text">connecting…</span></span>
+    <span class="pill" id="uptime">uptime –</span>
+    <span class="spacer"></span>
+    <span class="pill" id="version">v–</span>
+  </header>
+
+  <div class="grid" id="cards"></div>
+
+  <div class="cols">
+    <section><h2>Commands</h2><div id="commands"></div></section>
+    <section><h2>Resolving</h2><table id="resolver"></table></section>
+    <section><h2>Errors</h2><div id="errors"></div></section>
+    <section>
+      <h2>Process</h2>
+      <table id="process"></table>
+      <div class="sub" style="margin-top:8px;color:var(--muted)">CPU % (of one core)</div><svg class="spark" id="spark-cpu" viewBox="0 0 120 44" preserveAspectRatio="none"><polyline points=""/></svg>
+      <div class="sub" style="color:var(--muted)">Memory (MB)</div><svg class="spark" id="spark-mem" viewBox="0 0 120 44" preserveAspectRatio="none"><polyline points=""/></svg>
+    </section>
+  </div>
+
+  <section>
+    <h2>Recent events</h2>
+    <div class="tools">
+      <select id="level" aria-label="Minimum level">
+        <option value="info">Info and up</option><option value="warn">Warnings and up</option><option value="error">Errors only</option>
+      </select>
+      <button id="pause" type="button">Pause</button>
+      <span class="pill" id="counts">0 warnings · 0 errors</span>
+    </div>
+    <div id="log" role="log" aria-live="off"></div>
+  </section>
+
+  <footer>Aggregate statistics only — no server, channel or user identifiers. Refreshes every 2 seconds.</footer>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const key = new URLSearchParams(location.search).get('key');
+  const headers = key ? { Authorization: 'Bearer ' + key } : {};
+  const cpuHist = [], memHist = [], MAX = 60;
+  let paused = false, last = null;
+
+  const num = n => Number(n ?? 0).toLocaleString();
+  const dur = s => { s = Math.floor(s); const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+                     return (d ? d + 'd ' : '') + (h || d ? h + 'h ' : '') + m + 'm ' + (s % 60) + 's'; };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  const card = (label, value, sub) => `<div class="card"><div class="label">${label}</div><div class="value">${value}</div><div class="sub">${sub ?? '&nbsp;'}</div></div>`;
+  const rows = pairs => pairs.map(([k, v]) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`).join('');
+
+  function spark(id, hist) {
+    if (hist.length < 2) return;
+    const max = Math.max(...hist, 1);
+    const pts = hist.map((v, i) => `${(i / (MAX - 1) * 120).toFixed(1)},${(42 - v / max * 40).toFixed(1)}`).join(' ');
+    document.querySelector('#' + id + ' polyline').setAttribute('points', pts);
+  }
+
+  function render(s) {
+    last = s;
+    $('conn-dot').className = 'dot ' + (s.gateway.connected ? 'ok' : 'bad');
+    $('conn-text').textContent = s.gateway.connected ? 'connected to Discord' : 'not connected';
+    $('uptime').textContent = 'uptime ' + dur(s.uptimeSeconds);
+    $('version').textContent = 'v' + s.version;
+
+    $('cards').innerHTML =
+      card('Servers', num(s.gateway.guilds), 'bot is a member of') +
+      card('Voice sessions', num(s.voice.sessions), num(s.voice.playing) + ' playing') +
+      card('Queued tracks', num(s.voice.queued), num(s.voice.listeners) + ' listening') +
+      card('Tracks played', num(s.playback.tracksStarted), num(s.playback.tracksSkipped) + ' skipped') +
+      card('Audio streamed', s.playback.audioHours.toFixed(1) + ' h', s.playback.normalization ? 'loudness normalised' : 'raw levels') +
+      card('Errors', num(s.errors.unexpected), num(s.errors.total - s.errors.unexpected) + ' user-facing') +
+      card('Commands', num(s.commands.total), num(s.commands.cooldownHits) + ' rate-limited') +
+      card('Startup', (s.startupMs / 1000).toFixed(2) + ' s', 'checks + host build');
+
+    const byName = Object.entries(s.commands.byName).sort((a, b) => b[1] - a[1]);
+    const top = Math.max(1, ...byName.map(e => e[1]));
+    $('commands').innerHTML = byName.length
+      ? byName.map(([n, v]) => `<div class="barrow"><span>/${esc(n)}</span><div class="bar"><i style="width:${v / top * 100}%"></i></div><span class="num" style="text-align:right">${num(v)}</span></div>`).join('')
+      : '<span style="color:var(--muted)">No commands used yet.</span>';
+
+    const r = s.resolver;
+    $('resolver').innerHTML = rows([
+      ['Requests', num(r.requests)], ...Object.entries(r.bySource).map(([n, v]) => ['via ' + esc(n), num(v)]),
+      ['No results', num(r.noResults)], ['Stream fallbacks to yt-dlp', num(r.streamFallbacks)],
+      ['Avg. lookup', r.avgResolveMs ? r.avgResolveMs + ' ms' : '–'], ['Avg. stream open', r.avgStreamMs ? r.avgStreamMs + ' ms' : '–']]);
+
+    const errs = Object.entries(s.errors.byType).sort((a, b) => b[1] - a[1]);
+    $('errors').innerHTML = errs.length
+      ? `<table>${rows(errs.map(([t, v]) => [esc(t), num(v)]))}</table>`
+      : '<span style="color:var(--muted)">No errors so far.</span>';
+
+    const p = s.process;
+    $('process').innerHTML = rows([
+      ['CPU', p.cpuPercent + ' %'], ['Memory (working set)', p.workingSetMb + ' MB'], ['GC heap', p.gcHeapMb + ' MB'],
+      ['ffmpeg running', num(s.playback.ffmpegActive)], ['yt-dlp running', num(s.playback.ytdlpActive)],
+      ['Threads / cores', p.threads + ' / ' + p.cores], ['Runtime', esc(p.runtime)]]);
+    cpuHist.push(p.cpuPercent); memHist.push(p.workingSetMb);
+    if (cpuHist.length > MAX) { cpuHist.shift(); memHist.shift(); }
+    spark('spark-cpu', cpuHist); spark('spark-mem', memHist);
+
+    $('counts').textContent = num(s.logs.warnings) + ' warnings · ' + num(s.logs.errors) + ' errors';
+    renderLog();
+  }
+
+  const rank = { info: 0, warn: 1, error: 2 };
+  function renderLog() {
+    if (!last || paused) return;
+    const min = rank[$('level').value];
+    const box = $('log');
+    const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
+    box.innerHTML = last.recent.filter(l => rank[l.level] >= min).map(l => {
+      const t = new Date(l.time).toLocaleTimeString([], { hour12: false });
+      return `<div class="${l.level}"><span class="t">${t}</span> <span class="l">${l.level.toUpperCase().padEnd(5)}</span> <span class="c">${esc(l.category)}</span> ${esc(l.message)}</div>`;
+    }).join('');
+    if (stick) box.scrollTop = box.scrollHeight;
+  }
+
+  $('level').addEventListener('change', renderLog);
+  $('pause').addEventListener('click', () => { paused = !paused; $('pause').textContent = paused ? 'Resume' : 'Pause'; renderLog(); });
+
+  async function tick() {
+    try {
+      const res = await fetch('api/stats' + (key ? '?key=' + encodeURIComponent(key) : ''), { headers, cache: 'no-store' });
+      if (!res.ok) throw new Error(res.status);
+      render(await res.json());
+    } catch (e) {
+      $('conn-dot').className = 'dot bad';
+      $('conn-text').textContent = 'dashboard unreachable';
+    }
+  }
+  tick(); setInterval(tick, 2000);
+})();
+</script>
+</body>
+</html>

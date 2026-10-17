@@ -1,95 +1,138 @@
 using System.Diagnostics;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Singularity.Features.Music.Models;
+using Singularity.Observability;
 
 namespace Singularity.Features.Music.Resolvers;
 
-internal class YtdlpResolver(ILogger<YtdlpResolver> logger) : IMediaResolver
+internal class YtdlpResolver(ILogger<YtdlpResolver> logger, MusicOptions options, BotMetrics metrics) : IMediaResolver
 {
-    public string Name => "YT-DLP";
+    public string Name => "ytdlp";
+    public SongSource Source => SongSource.Ytdlp;
+
+    // yt-dlp can stream anything it can open, so it is the universal fallback.
+    public bool CanStream(MusicTrackNew track) => QueryUtil.TryGetWebUri(track.Url, out _);
 
     public Task<bool> CanResolveAsync(string query) => Task.FromResult(!string.IsNullOrWhiteSpace(query));
 
+    /// <summary>
+    ///     Looks the query up. Returns an empty list only when yt-dlp ran fine and found nothing; if it could not run,
+    ///     timed out or reported an error, that is thrown as <see cref="ResolverFailedException" /> with yt-dlp's reason.
+    /// </summary>
     public async Task<IReadOnlyList<MusicTrackNew>> ResolveAsync(string query)
     {
-        logger.LogInformation("Resolving query via yt-dlp: {Query}", query);
+        logger.LogDebug("Resolving query via yt-dlp: {Query}", query);
 
-        // Format search terms if not a direct URL
-        var isUrl = Uri.TryCreate(query, UriKind.Absolute, out _);
-        var targetQuery = isUrl ? query : $"ytsearch1:{query}";
+        query = query.Trim();
+
+        var isWebUrl = QueryUtil.TryGetWebUri(query, out var webUri);
+        if (isWebUrl && !await QueryUtil.IsPublicHostAsync(webUri))
+            throw new SearchException("That URL is not allowed.");
+
+        var target = isWebUrl ? query : $"ytsearch1:{query}";
 
         var psi = new ProcessStartInfo
         {
             FileName = "yt-dlp",
-            Arguments = $"--dump-single-json --no-warnings --flat-playlist \"{targetQuery}\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
 
+        // ArgumentList (not a joined string) + "--" so user input can never be parsed as options.
+        foreach (var arg in new[]
+                 {
+                     "--dump-single-json", "--no-warnings", "--flat-playlist",
+                     "--playlist-end", options.MaxPlaylistTracks.ToString(), "--", target
+                 })
+            psi.ArgumentList.Add(arg);
+
+        using var process = Process.Start(psi)
+                            ?? throw new ResolverFailedException("yt-dlp could not be started");
+        using var active = metrics.TrackYtdlp();
+        using var cts = new CancellationTokenSource(options.YtdlpTimeout);
+
+        string stdout;
+        string stderr;
         try
         {
-            using var process = Process.Start(psi);
-            if (process is null)
-            {
-                logger.LogError("Failed to start yt-dlp process.");
-                return [];
-            }
-
-            var jsonOutput = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
-
-            if (process.ExitCode != 0)
-            {
-                var error = await process.StandardError.ReadToEndAsync();
-                logger.LogError("yt-dlp exited with code {Code}: {Error}", process.ExitCode, error);
-                return [];
-            }
-
-            return ParseYtdlpJson(jsonOutput, query);
+            // Read both pipes concurrently so a full stderr pipe can never block yt-dlp.
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(cts.Token);
+            var stderrTask = process.StandardError.ReadToEndAsync(cts.Token);
+            await process.WaitForExitAsync(cts.Token);
+            stdout = await stdoutTask;
+            stderr = await stderrTask;
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            logger.LogError(ex, "Failed to resolve query with yt-dlp: {Query}", query);
-            return [];
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            throw new ResolverFailedException("yt-dlp took too long to answer");
+        }
+
+        if (process.ExitCode != 0)
+        {
+            var reason = StderrTail.Describe(stderr.Split('\n'), process.ExitCode);
+            logger.LogDebug("yt-dlp exited with code {Code}: {Error}", process.ExitCode, stderr);
+            throw new ResolverFailedException(reason);
+        }
+
+        try
+        {
+            return ParseYtdlpJson(stdout, query);
+        }
+        catch (JsonException ex)
+        {
+            // Exit code 0 but nothing usable on stdout: a broken or incompatible yt-dlp, not "no results".
+            throw new ResolverFailedException("yt-dlp gave an answer I couldn't read", ex);
         }
     }
 
-    public Task<Stream?> GetStreamAsync(MusicTrackNew track)
+    public async Task<Stream?> GetStreamAsync(MusicTrackNew track)
     {
-        logger.LogInformation("Piping audio stream via yt-dlp for: {Title}", track.Title);
+        if (!QueryUtil.TryGetWebUri(track.Url, out var uri) || !await QueryUtil.IsPublicHostAsync(uri))
+        {
+            logger.LogWarning("Refusing to stream non-public or non-http(s) URL for {Title}: {Url}", track.Title, track.Url);
+            return null;
+        }
+
+        logger.LogDebug("Piping audio stream via yt-dlp for: {Title}", track.Title);
 
         var psi = new ProcessStartInfo
         {
             FileName = "yt-dlp",
-            // Select best audio stream and pipe output directly to stdout (-)
-            Arguments = $"-f bestaudio/best -o - \"{track.Url}\"",
             RedirectStandardOutput = true,
-            RedirectStandardError = false,
+            RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
 
-        var process = Process.Start(psi);
-        if (process is null)
+        // Select best audio stream and pipe output directly to stdout (-)
+        foreach (var arg in new[] { "-f", "bestaudio/best", "--no-playlist", "--no-warnings", "-o", "-", "--", uri.AbsoluteUri })
+            psi.ArgumentList.Add(arg);
+
+        var process = Process.Start(psi) ?? throw new ResolverFailedException("yt-dlp could not be started");
+        var active = metrics.TrackYtdlp();
+
+        var tail = new StderrTail();
+        process.ErrorDataReceived += (_, e) =>
         {
-            logger.LogError("Failed to start yt-dlp process for streaming.");
-            return Task.FromResult<Stream?>(null);
-        }
+            tail.Add(e.Data);
+            if (!string.IsNullOrEmpty(e.Data)) logger.LogDebug("yt-dlp: {Line}", e.Data);
+        };
+        process.BeginErrorReadLine();
 
         // Return stdout stream directly to FFmpeg/OpusEncoder pipeline
-        return Task.FromResult<Stream?>(process.StandardOutput.BaseStream);
+        return new ProcessOutputStream(process, tail, active);
     }
 
-    public void PreFetchStreamInfo(MusicTrackNew track)
+    public void PreFetch(MusicTrackNew track)
     {
-        // No-op for yt-dlp stdout piping
+        // Nothing to prepare: yt-dlp streams straight to stdout when asked.
     }
 
-    private static IReadOnlyList<MusicTrackNew> ParseYtdlpJson(string json, string fallbackQuery)
+    internal static IReadOnlyList<MusicTrackNew> ParseYtdlpJson(string json, string fallbackQuery)
     {
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
@@ -115,36 +158,34 @@ internal class YtdlpResolver(ILogger<YtdlpResolver> logger) : IMediaResolver
         return tracks;
     }
 
+    private static string? GetString(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String ? prop.GetString() : null;
+
     private static MusicTrackNew? MapElementToTrack(JsonElement element, string fallbackQuery)
     {
-        var title = element.TryGetProperty("title", out var titleProp) ? titleProp.GetString() : null;
+        if (element.ValueKind != JsonValueKind.Object) return null;
+
+        var title = GetString(element, "title");
         if (string.IsNullOrEmpty(title)) return null;
 
-        var url = element.TryGetProperty("webpage_url", out var urlProp)
-            ? urlProp.GetString()
-            : element.TryGetProperty("url", out var u) ? u.GetString() : fallbackQuery;
+        var url = GetString(element, "webpage_url") ?? GetString(element, "url") ?? fallbackQuery;
+        var uploader = GetString(element, "uploader") ?? GetString(element, "channel") ?? "Unknown Artist";
 
-        var uploader = element.TryGetProperty("uploader", out var uploaderProp)
-            ? uploaderProp.GetString()
-            : element.TryGetProperty("channel", out var chProp) ? chProp.GetString() : "Unknown Artist";
-
-        double? durationSeconds = element.TryGetProperty("duration", out var durProp) && durProp.ValueKind == JsonValueKind.Number
-            ? durProp.GetDouble()
+        TimeSpan? duration = element.TryGetProperty("duration", out var durProp) &&
+                             durProp.ValueKind == JsonValueKind.Number
+            ? TimeSpan.FromSeconds(durProp.GetDouble())
             : null;
-
-        var thumbnail = element.TryGetProperty("thumbnail", out var thumbProp) ? thumbProp.GetString() : null;
-        var mediaId = element.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
 
         return new MusicTrackNew
         {
             Query = fallbackQuery,
-            Url = url ?? fallbackQuery,
+            Url = url,
             Title = title,
-            Author = uploader ?? "Unknown Artist",
-            Duration = durationSeconds.HasValue ? TimeSpan.FromSeconds(durationSeconds.Value) : null,
-            ThumbnailUrl = thumbnail,
+            Author = uploader,
+            Duration = duration,
+            ThumbnailUrl = GetString(element, "thumbnail"),
             Source = SongSource.Ytdlp,
-            MediaId = mediaId
+            MediaId = GetString(element, "id")
         };
     }
 }

@@ -16,7 +16,16 @@ public class BooruService(IE621Client client)
         var tagList = new List<string>();
 
         if (!string.IsNullOrWhiteSpace(userTags))
-            tagList.Add(userTags.Trim());
+        {
+            var tokens = userTags.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            // When a rating is enforced, the user must not be able to smuggle in their own rating:/-rating:/~rating:
+            // terms to widen or override it.
+            if (ratingFilter.HasValue)
+                tokens = tokens.Where(t => !t.Contains("rating:", StringComparison.OrdinalIgnoreCase)).ToArray();
+
+            tagList.AddRange(tokens);
+        }
 
         if (ratingFilter.HasValue)
         {
@@ -48,7 +57,8 @@ public class BooruService(IE621Client client)
         var finalTagQuery = string.Join(" ", tagList);
         var posts = await client.GetPostsAsync(finalTagQuery, limit: 10, cancellationToken);
 
-        var post = posts.FirstOrDefault();
+        // Prefer a post that can actually show an image.
+        var post = posts.FirstOrDefault(p => p.GetBestImageUrl() is not null) ?? posts.FirstOrDefault();
         if (post is null) return null;
 
         return BuildEmbed(post);
@@ -58,13 +68,19 @@ public class BooruService(IE621Client client)
     {
         var imageUrl = post.GetBestImageUrl();
         var artist = post.ArtistName;
-        var sourceUrl = post.Sources?.FirstOrDefault();
+        var rating = post.Rating ?? "?";
+        var sourceUrl = post.Sources?.FirstOrDefault(IsHttpUrl);
+
+        // Parentheses would end the markdown link early.
+        var sourceLine = sourceUrl is null
+            ? ""
+            : $"**[Source]({sourceUrl.Replace("(", "%28").Replace(")", "%29")})**";
 
         var description = $"""
-            **Score**:  `{post.Score.Total} ({post.Score.Up} / {post.Score.Down})`
-            **Rating**: `{post.Rating.ToUpper()}`
+            **Score**:  `{post.Score?.Total ?? 0} ({post.Score?.Up ?? 0} / {post.Score?.Down ?? 0})`
+            **Rating**: `{rating.ToUpper()}`
             **Favs**:   `{post.FavCount}`
-            {(string.IsNullOrEmpty(sourceUrl) ? "" : $"**[Source]({sourceUrl})**")}
+            {sourceLine}
             """;
 
         var embed = new EmbedProperties
@@ -72,7 +88,7 @@ public class BooruService(IE621Client client)
             Title = $"e621 Post #{post.Id}",
             Url = post.WebUrl,
             Description = description,
-            Color = post.Rating switch
+            Color = rating switch
             {
                 "s" => new Color(0, 180, 216),
                 "q" => new Color(255, 183, 3),
@@ -89,4 +105,7 @@ public class BooruService(IE621Client client)
 
         return embed;
     }
+
+    private static bool IsHttpUrl(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
 }

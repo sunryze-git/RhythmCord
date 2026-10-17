@@ -1,3 +1,6 @@
+using Singularity.Infrastructure;
+
 namespace Singularity.Features.Music.Resolvers;
 
-internal class SearchException(string message) : Exception(message);
+/// <summary>The request itself was the problem (nothing found, URL not allowed, queue full...).</summary>
+internal class SearchException(string message) : UserFacingException(message);
