@@ -46,6 +46,7 @@ public partial class BooruService(IE621Client client)
             var typeTags = typeFilter.Value switch
             {
                 BooruMediaType.Photo => "-animated -type:webm -type:mp4 -type:swf",
+                BooruMediaType.Video => "-type:jpg -type:png -type:gif -type:webp -type:swf",
                 BooruMediaType.Gif => "type:gif",
                 _ => null
             };

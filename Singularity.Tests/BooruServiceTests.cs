@@ -64,6 +64,9 @@ public class BooruServiceTests
 
         await service.GetRandomPostAsync("", null, BooruMediaType.Photo);
         Assert.Equal("-animated -type:webm -type:mp4 -type:swf order:random", client.LastTags);
+
+        await service.GetRandomPostAsync("", null, BooruMediaType.Video);
+        Assert.Equal("-type:jpg -type:png -type:gif -type:webp -type:swf order:random", client.LastTags);
     }
 
     [Fact]
