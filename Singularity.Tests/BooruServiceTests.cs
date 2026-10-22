@@ -1,3 +1,4 @@
+using NetCord.Rest;
 using Singularity.Features.Booru.Clients;
 using Singularity.Features.Booru.Models;
 using Singularity.Features.Booru.Services;
@@ -33,7 +34,7 @@ public class BooruServiceTests
     {
         var client = new FakeClient();
 
-        await new BooruService(client).GetRandomPostEmbedAsync("cat  tail", null, null);
+        await new BooruService(client).GetRandomPostAsync("cat  tail", null, null);
 
         Assert.Equal("cat tail order:random", client.LastTags);
         Assert.Equal(10, client.LastLimit);
@@ -47,7 +48,7 @@ public class BooruServiceTests
     {
         var client = new FakeClient();
 
-        await new BooruService(client).GetRandomPostEmbedAsync(userTags, BooruRating.Safe, null);
+        await new BooruService(client).GetRandomPostAsync(userTags, BooruRating.Safe, null);
 
         Assert.Equal("cat rating:safe order:random", client.LastTags);
     }
@@ -58,54 +59,125 @@ public class BooruServiceTests
         var client = new FakeClient();
         var service = new BooruService(client);
 
-        await service.GetRandomPostEmbedAsync("", null, BooruMediaType.Gif);
+        await service.GetRandomPostAsync("", null, BooruMediaType.Gif);
         Assert.Equal("type:gif order:random", client.LastTags);
 
-        await service.GetRandomPostEmbedAsync("", null, BooruMediaType.Photo);
+        await service.GetRandomPostAsync("", null, BooruMediaType.Photo);
         Assert.Equal("-animated -type:webm -type:mp4 -type:swf order:random", client.LastTags);
     }
 
     [Fact]
     public async Task No_posts_gives_null()
     {
-        Assert.Null(await new BooruService(new FakeClient()).GetRandomPostEmbedAsync("x", null, null));
+        Assert.Null(await new BooruService(new FakeClient()).GetRandomPostAsync("x", null, null));
     }
 
+    private static string Text(ComponentContainerProperties message) =>
+        string.Join("\n", message.Components.OfType<TextDisplayProperties>().Select(t => t.Content));
+
+    private static string? MediaUrl(ComponentContainerProperties message) =>
+        message.Components.OfType<MediaGalleryProperties>().SingleOrDefault()?.Items.Single().Media.Url;
+
+    private static List<LinkButtonProperties> Buttons(ComponentContainerProperties message) =>
+        message.Components.OfType<ActionRowProperties>().SingleOrDefault()?.Components.Cast<LinkButtonProperties>().ToList() ?? [];
+
     [Fact]
-    public async Task Prefers_a_post_that_can_show_an_image()
+    public async Task Prefers_a_post_that_can_show_something()
     {
-        var blank = Post(1, ext: "webm");
+        var blank = Post(1, ext: "swf");
         var good = Post(2, sampleUrl: "https://img/2.jpg");
 
-        var embed = await new BooruService(new FakeClient([blank, good])).GetRandomPostEmbedAsync("x", null, null);
+        var message = await new BooruService(new FakeClient([blank, good])).GetRandomPostAsync("x", null, null);
 
-        Assert.NotNull(embed);
-        Assert.Contains("#2", embed!.Title);
-        Assert.Equal("https://img/2.jpg", embed.Image!.Url);
+        Assert.NotNull(message);
+        Assert.Contains("(https://e621.net/posts/2)", Text(message!));
+        Assert.Equal("https://img/2.jpg", MediaUrl(message!));
     }
 
     [Fact]
-    public void Embed_source_link_is_http_only_and_parentheses_are_escaped()
+    public void Playable_videos_go_in_the_gallery_and_flash_falls_back_to_its_preview()
     {
         var service = new BooruService(new FakeClient());
 
-        var safe = service.BuildEmbed(Post(1, sources: ["javascript:alert(1)", "https://example.com/a_(b)"]));
-        Assert.Contains("[Source](https://example.com/a_%28b%29)", safe.Description);
-
-        var none = service.BuildEmbed(Post(2, sources: ["ftp://nope"]));
-        Assert.DoesNotContain("Source", none.Description);
+        Assert.Equal("https://static/1.webm", MediaUrl(service.BuildMessage(Post(1, fileUrl: "https://static/1.webm", ext: "webm", previewUrl: "p"))));
+        Assert.Equal("p", MediaUrl(service.BuildMessage(Post(2, fileUrl: "https://static/2.swf", ext: "swf", previewUrl: "p"))));
+        Assert.Null(MediaUrl(service.BuildMessage(Post(3, ext: "swf"))));
     }
 
     [Fact]
-    public void Embed_survives_missing_objects()
+    public void Source_button_is_http_only()
+    {
+        var service = new BooruService(new FakeClient());
+
+        var safe = Buttons(service.BuildMessage(Post(1, sources: ["javascript:alert(1)", "https://www.example.com/a_(b)"])));
+        var source = Assert.Single(safe, b => b.Label!.StartsWith("Source"));
+        Assert.Equal("Source · example.com", source.Label);
+        Assert.Equal("https://www.example.com/a_(b)", source.Url);
+
+        var none = Buttons(service.BuildMessage(Post(2, sources: ["ftp://nope", "https://x.y/" + new string('a', 600)])));
+        Assert.DoesNotContain(none, b => b.Label!.StartsWith("Source"));
+    }
+
+    [Fact]
+    public void Original_button_links_the_full_file_and_the_row_is_left_out_when_empty()
+    {
+        var service = new BooruService(new FakeClient());
+
+        var image = Buttons(service.BuildMessage(Post(1, fileUrl: "https://static/1.png", ext: "png")));
+        Assert.Equal("https://static/1.png", Assert.Single(image).Url);
+
+        Assert.Empty(service.BuildMessage(Post(2)).Components.OfType<ActionRowProperties>());
+    }
+
+    [Fact]
+    public void Message_survives_missing_objects()
     {
         var bare = new E621Post(9, null, 0, null, null, null, null, null, null, null, null);
 
-        var embed = new BooruService(new FakeClient()).BuildEmbed(bare);
+        var text = Text(new BooruService(new FakeClient()).BuildMessage(bare));
 
-        Assert.Contains("#9", embed.Title);
-        Assert.Contains("unknown artist", embed.Footer!.Text);
+        Assert.Contains("## [Post #9](https://e621.net/posts/9)", text);
+        Assert.Contains("-# 🎨 unknown artist\n", text);
+        Assert.Contains("e621 #9 • Unrated", text);
     }
+
+    [Fact]
+    public void Message_is_titled_by_characters_and_credits_real_artists()
+    {
+        var post = Post(1) with
+        {
+            Tags = new E621Tags(null, ["conditional_dnp", "some_artist"], ["pokemon"], ["zan_(zantanerz)", "c", "d", "e"], ["red_fox"], null),
+            CreatedAt = DateTimeOffset.FromUnixTimeSeconds(1656000000)
+        };
+
+        var text = Text(new BooruService(new FakeClient()).BuildMessage(post));
+
+        Assert.Contains("## [Zan, C, D +1 more](https://e621.net/posts/1)", text);
+        Assert.Contains("-# [🎨 some artist](https://e621.net/posts?tags=some_artist)", text);
+        Assert.Contains("-# pokemon · red fox", text);
+        Assert.Contains("<t:1656000000:D>", text);
+    }
+
+    [Fact]
+    public void E621_text_cannot_inject_markdown()
+    {
+        Assert.Equal(@"> \*\*hi\*\* \[a link\](y) # \` \<@1>", BooruService.Excerpt("**hi** [a link](y) # ` <@1>"));
+    }
+
+    [Fact]
+    public void Description_excerpt_strips_dtext_and_is_truncated()
+    {
+        Assert.Equal("> bold and link here", BooruService.Excerpt("[b]bold[/b] and \"link\":https://x.y here"));
+        Assert.Null(BooruService.Excerpt("  [i][/i] "));
+        Assert.EndsWith("…", BooruService.Excerpt(new string('a', 1000)));
+    }
+
+    [Theory]
+    [InlineData(999, "999")]
+    [InlineData(1234, "1.2K")]
+    [InlineData(33170, "33K")]
+    [InlineData(2_500_000, "2.5M")]
+    public void Counts_are_compacted(int value, string expected) => Assert.Equal(expected, BooruService.Compact(value));
 }
 
 public class E621PostTests

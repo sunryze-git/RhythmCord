@@ -51,12 +51,12 @@ public class BooruCommands(
             rating = BooruRating.Safe;
         }
 
-        EmbedProperties? embed = null;
+        ComponentContainerProperties? result = null;
         string? failure = null;
         try
         {
-            embed = await booruService.GetRandomPostEmbedAsync(tags, rating, type);
-            metrics.BooruRequest(embed is null ? "empty" : "ok");
+            result = await booruService.GetRandomPostAsync(tags, rating, type);
+            metrics.BooruRequest(result is null ? "empty" : "ok");
         }
         catch (Exception ex)
         {
@@ -68,8 +68,15 @@ public class BooruCommands(
         {
             await ModifyResponseAsync(msg =>
             {
-                msg.Content = failure ?? (embed is null ? "No posts were found." : string.Empty);
-                if (embed is not null) msg.Embeds = [embed];
+                if (result is null)
+                {
+                    msg.Content = failure ?? "No posts were found.";
+                    return;
+                }
+
+                // Components V2 messages cannot carry content or embeds; everything lives in the container.
+                msg.Flags = MessageFlags.IsComponentsV2;
+                msg.Components = [result];
             });
         }
         catch (Exception ex)
