@@ -68,6 +68,11 @@ public record E621Post(
     private List<string> Artists => Tags?.Artist?.Where(a => !NonArtistTags.Contains(a)).ToList() ?? [];
 
     /// <summary>
+    /// The notice tags (e.g. "epilepsy_warning") that were left out of <see cref="Artists"/>.
+    /// </summary>
+    public List<string> Notices => Tags?.Artist?.Where(NonArtistTags.Contains).ToList() ?? [];
+
+    /// <summary>
     /// Formats artists into a single display string.
     /// </summary>
     public string ArtistName => Artists is { Count: > 0 } artists

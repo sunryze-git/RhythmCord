@@ -159,6 +159,22 @@ public class BooruServiceTests
     }
 
     [Fact]
+    public void Notice_tags_are_shown_and_flashing_media_is_spoilered()
+    {
+        var service = new BooruService(new FakeClient());
+        var post = Post(1, sampleUrl: "https://img/1.jpg", artists: ["epilepsy_warning", "sound_warning", "unknown_artist", "someone"]);
+
+        var message = service.BuildMessage(post);
+
+        Assert.Contains("-# ⚠️ Flashing lights · 🔊 Loud audio\n", Text(message) + "\n");
+        Assert.DoesNotContain("unknown", Text(message));
+        Assert.True(message.Components.OfType<MediaGalleryProperties>().Single().Items.Single().Spoiler);
+
+        var calm = service.BuildMessage(Post(2, sampleUrl: "https://img/2.jpg"));
+        Assert.False(calm.Components.OfType<MediaGalleryProperties>().Single().Items.Single().Spoiler);
+    }
+
+    [Fact]
     public void E621_text_cannot_inject_markdown()
     {
         Assert.Equal(@"> \*\*hi\*\* \[a link\](y) # \` \<@1>", BooruService.Excerpt("**hi** [a link](y) # ` <@1>"));

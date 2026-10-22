@@ -73,6 +73,15 @@ public partial class BooruService(IE621Client client)
     // Discord rejects link buttons with longer URLs.
     private const int MaxButtonUrlLength = 512;
 
+    // e621 notice tags worth warning about. Unknown/anonymous artist are left out: the artist line already says so.
+    private static readonly Dictionary<string, string> NoticeLabels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["epilepsy_warning"] = "⚠️ Flashing lights",
+        ["sound_warning"] = "🔊 Loud audio",
+        ["avoid_posting"] = "🚫 Artist asks not to be reposted",
+        ["conditional_dnp"] = "🚫 Artist restricts reposting",
+    };
+
     /// <summary>
     /// Lays the post out as a Components V2 container. Unlike an embed, its media gallery can play videos inline.
     /// The message it goes in must carry <see cref="MessageFlags.IsComponentsV2"/> and no content or embeds.
@@ -89,13 +98,24 @@ public partial class BooruService(IE621Client client)
         header.Add($"## [{Escape(title)}]({post.WebUrl})");
         if (Excerpt(post.Description) is { } excerpt)
             header.Add(excerpt);
+
+        // Shown above the media so they are read before anything plays.
+        var noticeTags = post.Notices;
+        var notices = noticeTags.Select(n => NoticeLabels.GetValueOrDefault(n)).OfType<string>().ToList();
+        if (notices.Count > 0)
+            header.Add($"-# {string.Join(" · ", notices)}");
         components.Add(new TextDisplayProperties(string.Join("\n", header)));
 
         if (post.GetMediaUrl() is { } mediaUrl)
         {
             components.Add(new MediaGalleryProperties(
             [
-                new MediaGalleryItemProperties(new ComponentMediaProperties(mediaUrl)) { Description = title }
+                new MediaGalleryItemProperties(new ComponentMediaProperties(mediaUrl))
+                {
+                    Description = title,
+                    // Blurred until clicked, so nobody is shown flashing content without choosing to.
+                    Spoiler = noticeTags.Contains("epilepsy_warning", StringComparer.OrdinalIgnoreCase)
+                }
             ]));
         }
 
