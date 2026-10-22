@@ -56,3 +56,4 @@ Singularity/.venv/
 # Nix build output
 result
 result-*
+.direnv
