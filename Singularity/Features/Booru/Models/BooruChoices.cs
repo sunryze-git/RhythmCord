@@ -17,6 +17,9 @@ public enum BooruMediaType
     [SlashCommandChoice(Name = "Photo")]
     Photo,
 
+    [SlashCommandChoice(Name = "Video")]
+    Video,
+
     [SlashCommandChoice(Name = "Gif")]
     Gif,
 }

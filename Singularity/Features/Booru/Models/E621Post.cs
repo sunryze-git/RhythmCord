@@ -22,9 +22,29 @@ public record E621Post(
         "png", "jpg", "jpeg", "gif", "webp"
     };
 
+    // Formats Discord can play inline in a media gallery (flash cannot be played anywhere).
+    private static readonly HashSet<string> PlayableVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "webm", "mp4"
+    };
+
+    [JsonPropertyName("created_at")]
+    public DateTimeOffset? CreatedAt { get; init; }
+
+    [JsonPropertyName("comment_count")]
+    public int CommentCount { get; init; }
+
     /// <summary>
-    /// Prefers the compressed JPG sample for fast rendering in Discord embeds, then the full file if it is an image.
-    /// Videos (webm/mp4/swf) cannot render as an embed image, so they fall back to their preview thumbnail.
+    /// What to show in the message: the video itself when Discord can play it, otherwise the best still image.
+    /// </summary>
+    public string? GetMediaUrl() =>
+        File is { Url.Length: > 0 } && File.Ext is { } ext && PlayableVideoExtensions.Contains(ext)
+            ? File.Url
+            : GetBestImageUrl();
+
+    /// <summary>
+    /// Prefers the compressed JPG sample because it loads fast in Discord, then the full file if it is an image.
+    /// Anything else (video/flash) falls back to its preview thumbnail.
     /// </summary>
     public string? GetBestImageUrl()
     {
@@ -38,12 +58,33 @@ public record E621Post(
     /// </summary>
     public string WebUrl => $"https://e621.net/posts/{Id}";
 
+    // e621 files these under the artist category, but they are notices rather than people.
+    // todo: maybe these should be displayed in the discord embed rather than filtered out???
+    private static readonly HashSet<string> NonArtistTags = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "conditional_dnp", "avoid_posting", "sound_warning", "epilepsy_warning", "unknown_artist", "anonymous_artist"
+    };
+
+    private List<string> Artists => Tags?.Artist?.Where(a => !NonArtistTags.Contains(a)).ToList() ?? [];
+
     /// <summary>
-    /// Formats artists into a single string for embed footers.
+    /// The notice tags (e.g. "epilepsy_warning") that were left out of <see cref="Artists"/>.
     /// </summary>
-    public string ArtistName => Tags?.Artist is { Count: > 0 } artists
-        ? string.Join(", ", artists)
+    public List<string> Notices => Tags?.Artist?.Where(NonArtistTags.Contains).ToList() ?? [];
+
+    /// <summary>
+    /// Formats artists into a single display string.
+    /// </summary>
+    public string ArtistName => Artists is { Count: > 0 } artists
+        ? string.Join(", ", artists.Select(a => a.Replace('_', ' ')))
         : "unknown artist";
+
+    /// <summary>
+    /// Search for the (first) artist's other work, or null when the artist is unknown.
+    /// </summary>
+    public string? ArtistUrl => Artists is [var first, ..]
+        ? $"https://e621.net/posts?tags={Uri.EscapeDataString(first)}"
+        : null;
 }
 
 public record E621File(
