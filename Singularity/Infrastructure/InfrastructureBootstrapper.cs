@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
+using Singularity.Features.Music;
 using Singularity.Features.Music.Backends;
 using Singularity.Features.Music.Models;
 using Singularity.Features.Music.Resolvers;
@@ -41,6 +42,8 @@ public static class InfrastructureBootstrapper
         services.AddSingleton<GuildAudioInstanceOrchestrator>();
         services.AddSingleton<MediaResolver>();
         services.AddSingleton<ITrackSource>(sp => sp.GetRequiredService<MediaResolver>());
+        services.AddSingleton(sp => new MusicSearch(
+            sp.GetRequiredService<ITrackSource>(), sp.GetRequiredService<MusicOptions>(), sp.GetRequiredService<TimeProvider>()));
 
         // Backends and resolvers; MediaResolver tries them in the order set by Music:ResolverOrder.
         services.AddSingleton<YoutubeBackend>();

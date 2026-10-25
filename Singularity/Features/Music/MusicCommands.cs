@@ -1,6 +1,7 @@
 using Singularity.Features.Music.Models;
 using Singularity.Features.Music.Permissions;
 using Singularity.Features.Music.Player;
+using Singularity.Features.Music.Views;
 using NetCord;
 using NetCord.Rest;
 using NetCord.Services.ApplicationCommands;
@@ -13,6 +14,7 @@ namespace Singularity.Features.Music;
 public class MusicCommands(
     ILogger<MusicCommands> logger,
     GuildAudioInstanceOrchestrator orchestrator,
+    MusicSearch search,
     CommandCooldown cooldown,
     MusicOptions options,
     BotMetrics metrics,
@@ -27,49 +29,46 @@ public class MusicCommands(
     {
         using var scope = Begin("play");
 
-        if (!cooldown.TryAcquire("play", Context.User.Id, options.PlayCooldown, out var remaining))
-        {
-            metrics.CooldownHit();
-            await RespondTextAsync($"Slow down! Try again in {Math.Ceiling(remaining.TotalSeconds)}s.", ephemeral: true);
-            return;
-        }
+        if (await RefuseIfOnCooldownAsync("play")) return;
 
-        await RespondAsync(InteractionCallback.DeferredMessage());
+        await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.IsComponentsV2));
 
         GuildAudioInstance? manager = null;
         try
         {
             manager = GetManager();
-            var songs = await manager.EnqueueAsync(Context, query, insertNext);
-            var song = songs[0];
-
-            var description = songs.Count > 1
-                ? $"**{song.Title}**\n*{song.Author}*\n\n…and {songs.Count - 1} more track(s)"
-                : $"**{song.Title}**\n*{song.Author}*";
-
-            var embed = new EmbedProperties
-            {
-                Title = songs.Count > 1 ? "Added Playlist to Queue" : "Added to Queue",
-                Description = description,
-                Thumbnail = song.ThumbnailUrl is not null ? new EmbedThumbnailProperties(song.ThumbnailUrl) : null,
-                Color = new Color(0, 122, 255)
-            };
-
-            await TryModifyResponseAsync(message =>
-            {
-                message.Content = string.Empty;
-                message.Embeds = [embed];
-            });
+            var songs = await manager.EnqueueAsync(RequestOrigin.From(Context), query, insertNext);
+            await TryModifyResponseAsync(MusicViews.Added(songs, insertNext), "play");
         }
         catch (Exception e)
         {
-            // A session that never managed to join voice would otherwise linger as an empty shell.
-            if (manager is { Voice.IsJoined: false } && Context.Guild is { } guild)
-                await orchestrator.CloseManagerAsync(guild.Id);
+            await CloseUnjoinedSessionAsync(manager);
 
             // Expected problems (nothing found, join failed, queue full...) show their own message; bugs show a generic one.
-            var message = errors.Report(e, "play");
-            await TryModifyResponseAsync(response => response.Content = message);
+            await TryModifyResponseAsync(MusicViews.Notice(errors.Report(e, "play"), failure: true), "play");
+        }
+    }
+
+    [SlashCommand("search", "Search for a song and pick which one to play.")]
+    [RequireBotConnectPermission]
+    [RequireSameVoiceChannelIfConnected]
+    public async Task SearchAsync(
+        [SlashCommandParameter(Name = "query", Description = "What to search for")] string query)
+    {
+        using var scope = Begin("search");
+
+        if (await RefuseIfOnCooldownAsync("search")) return;
+
+        await RespondAsync(InteractionCallback.DeferredMessage(MessageFlags.IsComponentsV2));
+
+        try
+        {
+            var offer = await search.FindAsync(Context.User.Id, query);
+            await TryModifyResponseAsync(MusicViews.SearchResults(query, offer.Token, offer.Results), "search");
+        }
+        catch (Exception e)
+        {
+            await TryModifyResponseAsync(MusicViews.Notice(errors.Report(e, "search"), failure: true), "search");
         }
     }
 
@@ -80,22 +79,7 @@ public class MusicCommands(
     public async Task StopAsync()
     {
         using var scope = Begin("stop");
-
-        if (!CanModerate())
-        {
-            await RespondNoPermissionAsync();
-            return;
-        }
-
-        var player = GetManager().Player;
-        if (!player.Snapshot.HasWork)
-        {
-            await RespondNoSongPlayingAsync();
-            return;
-        }
-
-        await player.StopAsync();
-        await RespondTextAsync("Stopped playback and cleared the queue.");
+        await RespondWithAsync(await MusicControls.StopAsync(GetManager().Player, RequestOrigin.From(Context)));
     }
 
     [SlashCommand("skip", "Skips the current song (majority vote if others are listening).")]
@@ -105,36 +89,7 @@ public class MusicCommands(
     public async Task SkipAsync()
     {
         using var scope = Begin("skip");
-
-        var player = GetManager().Player;
-        var song = player.Snapshot.Current;
-        if (song is null)
-        {
-            await RespondNoSongPlayingAsync();
-            return;
-        }
-
-        // The requester, a moderator, or the only listener can skip outright; everyone else votes.
-        if (PlaybackPolicy.CanSkipImmediately(song.RequestedBy == Context.User.Id, CanModerate()))
-        {
-            await player.SkipAsync(song);
-            await RespondTextAsync("Skipped the current song.");
-            return;
-        }
-
-        var listeners = ListenerCount();
-        var needed = PlaybackPolicy.VotesNeeded(listeners);
-        var votes = await player.VoteSkipAsync(Context.User.Id, song);
-
-        if (votes < 0)
-            await RespondTextAsync("That song already finished.");
-        else if (PlaybackPolicy.VotePasses(votes, listeners))
-        {
-            await player.SkipAsync(song);
-            await RespondTextAsync($"Vote passed ({votes}/{needed}). Skipped the current song.");
-        }
-        else
-            await RespondTextAsync($"Skip vote registered ({votes}/{needed}).");
+        await RespondWithAsync(await MusicControls.SkipAsync(GetManager().Player, RequestOrigin.From(Context)));
     }
 
     [SlashCommand("leave", "Leaves the voice channel.")]
@@ -145,13 +100,13 @@ public class MusicCommands(
     {
         using var scope = Begin("leave");
 
-        if (!CanModerate())
+        if (!RequestOrigin.From(Context).CanModerate)
         {
-            await RespondNoPermissionAsync();
+            await RespondWithAsync(ControlResult.Refuse("You need the Move Members permission (or be alone with me) to do that."));
             return;
         }
 
-        await RespondTextAsync("Bye! 👋");
+        await RespondWithAsync(ControlResult.Ok("Bye! 👋"));
 
         if (Context.Guild != null)
         {
@@ -159,7 +114,7 @@ public class MusicCommands(
         }
     }
 
-    [SlashCommand("status", "Shows information about the current song.")]
+    [SlashCommand("status", "Shows the current song with playback controls.")]
     [RequireUserVoice]
     [RequireBotInVoiceChannel]
     [RequireSameVoiceChannel]
@@ -168,32 +123,7 @@ public class MusicCommands(
         using var scope = Begin("status");
 
         var player = GetManager().Player;
-        var song = player.Snapshot.Current;
-
-        if (song is null)
-        {
-            await RespondNoSongPlayingAsync();
-            return;
-        }
-
-        var duration = song.Duration ?? TimeSpan.Zero;
-        var description = $"""
-            **{song.Title}**
-            *{song.Author}*
-
-            **Playback**: {player.Position.ToAdaptivePlaybackString()} / {duration.ToAdaptivePlaybackString()}
-            **[Listen on Source]({song.Url})**
-            """;
-
-        var embed = new EmbedProperties
-        {
-            Title = "Now Playing",
-            Description = description,
-            Thumbnail = song.ThumbnailUrl is not null ? new EmbedThumbnailProperties(song.ThumbnailUrl) : null,
-            Color = new Color(255, 204, 0),
-        };
-
-        await RespondAsync(InteractionCallback.Message(new InteractionMessageProperties { Embeds = [embed] }));
+        await RespondAsync(InteractionCallback.Message(MusicViews.NowPlaying(player.Snapshot, player.Position).ToMessage()));
     }
 
     [SlashCommand("loop", "Sets what repeats: the current song, the whole queue, or nothing.")]
@@ -204,24 +134,17 @@ public class MusicCommands(
         [SlashCommandParameter(Name = "mode", Description = "Leave empty to move to the next mode")] LoopMode? mode = null)
     {
         using var scope = Begin("loop");
+        await RespondWithAsync(await MusicControls.LoopAsync(GetManager().Player, mode));
+    }
 
-        var player = GetManager().Player;
-        var song = player.Snapshot.Current;
-
-        if (song is null)
-        {
-            await RespondNoSongPlayingAsync();
-            return;
-        }
-
-        var applied = await player.SetLoopAsync(mode, song);
-        await RespondTextAsync(applied switch
-        {
-            LoopMode.Track => $"🔂 Looping **{song.Title}**",
-            LoopMode.Queue => "🔁 Looping the whole queue.",
-            LoopMode.Off => "➡️ Loop is off.",
-            _ => "That song already finished."
-        });
+    [SlashCommand("shuffle", "Shuffles the current queue.")]
+    [RequireUserVoice]
+    [RequireBotInVoiceChannel]
+    [RequireSameVoiceChannel]
+    public async Task ShuffleAsync()
+    {
+        using var scope = Begin("shuffle");
+        await RespondWithAsync(await MusicControls.ShuffleAsync(GetManager().Player));
     }
 
     [SlashCommand("remove", "Removes a song from the queue.")]
@@ -237,39 +160,11 @@ public class MusicCommands(
         var pending = player.Snapshot.Pending;
         if (position < 1 || position > pending.Count)
         {
-            await RespondTextAsync($"There is no song at position {position}.", ephemeral: true);
+            await RespondWithAsync(ControlResult.Refuse($"There is no song at position {position}."));
             return;
         }
 
-        var song = pending[position - 1];
-        if (!CanRemove(song))
-        {
-            await RespondTextAsync("Only the person who queued it, or someone with Move Members, can remove that song.", ephemeral: true);
-            return;
-        }
-
-        await RespondTextAsync(await player.RemoveAsync(song)
-            ? $"Removed **{song.Title}** from the queue."
-            : "That song is no longer in the queue.");
-    }
-
-    [SlashCommand("shuffle", "Shuffles the current queue.")]
-    [RequireUserVoice]
-    [RequireBotInVoiceChannel]
-    [RequireSameVoiceChannel]
-    public async Task ShuffleAsync()
-    {
-        using var scope = Begin("shuffle");
-
-        var player = GetManager().Player;
-        if (!player.Snapshot.HasWork)
-        {
-            await RespondNoSongPlayingAsync();
-            return;
-        }
-
-        await player.ShuffleAsync();
-        await RespondTextAsync("🔀 Queue shuffled.");
+        await RespondWithAsync(await MusicControls.RemoveAsync(player, RequestOrigin.From(Context), pending[position - 1]));
     }
 
     [SlashCommand("queue", "Shows the current queue.")]
@@ -281,54 +176,11 @@ public class MusicCommands(
     {
         using var scope = Begin("queue");
 
-        var snapshot = GetManager().Player.Snapshot;
-        var songs = snapshot.Pending;
-        var current = snapshot.Current;
-        var nowPlaying = current is null ? null : $"Now playing: **{current.Title}**";
-        var pageSize = Math.Max(1, options.QueuePageSize);
-
-        EmbedProperties embed;
-        if (songs.Count == 0)
-        {
-            embed = new EmbedProperties
-            {
-                Title = "Queue is empty",
-                Description = nowPlaying is null
-                    ? "Use `/play <query>` to add songs to the queue!"
-                    : $"{nowPlaying}\nUse `/play <query>` to add more songs!",
-                Color = new Color(255, 59, 48)
-            };
-        }
-        else
-        {
-            var pageCount = (songs.Count + pageSize - 1) / pageSize;
-            page = Math.Clamp(page, 1, pageCount);
-            var offset = (page - 1) * pageSize;
-
-            embed = new EmbedProperties
-            {
-                Title = $"Up Next — page {page}/{pageCount}",
-                Description = nowPlaying,
-                Color = new Color(0, 122, 255),
-                Footer = new EmbedFooterProperties
-                {
-                    Text = $"{songs.Count} track(s) queued • /queue page:<n> for more • /skip for the next track"
-                },
-                Fields = songs.Skip(offset).Take(pageSize).Select((song, index) => new EmbedFieldProperties
-                {
-                    Inline = false,
-                    Name = $"#{offset + index + 1} - {Truncate(song.Title, 200)}",
-                    Value = $"[Listen]({song.Url}) • {song.Duration?.ToAdaptivePlaybackString() ?? "Live Stream"}"
-                })
-            };
-        }
-
-        await RespondAsync(InteractionCallback.Message(new InteractionMessageProperties { Embeds = [embed] }));
+        var view = MusicViews.Queue(GetManager().Player.Snapshot, page, options.QueuePageSize);
+        await RespondAsync(InteractionCallback.Message(view.ToMessage()));
     }
 
     #region Helpers
-
-    private static string Truncate(string text, int max) => text.Length <= max ? text : text[..(max - 1)] + "…";
 
     // Counts the command (by name only) and tags this call's logs with guild/user context (console only).
     private IDisposable? Begin(string command)
@@ -339,50 +191,35 @@ public class MusicCommands(
 
     private GuildAudioInstance GetManager() => orchestrator.GetOrCreateManager(Context.Guild!.Id);
 
-    // Number of people (besides the bot) in the bot's voice channel.
-    private int ListenerCount()
+    private async Task<bool> RefuseIfOnCooldownAsync(string command)
     {
-        var guild = Context.Guild!;
-        if (!guild.VoiceStates.TryGetValue(Context.Client.Id, out var bot) || bot.ChannelId is not { } channelId)
-            return 0;
+        if (cooldown.TryAcquire(command, Context.User.Id, options.PlayCooldown, out var remaining)) return false;
 
-        return guild.VoiceStates.Count(kv => kv.Key != Context.Client.Id && kv.Value.ChannelId == channelId);
+        metrics.CooldownHit();
+        await RespondWithAsync(ControlResult.Refuse($"Slow down! Try again in {Math.Ceiling(remaining.TotalSeconds)}s."));
+        return true;
     }
 
-    private bool CanModerate()
+    // A session that never managed to join voice would otherwise linger as an empty shell.
+    private async Task CloseUnjoinedSessionAsync(GuildAudioInstance? manager)
     {
-        var isModerator = Context.User is GuildInteractionUser member &&
-                          (member.Permissions.HasFlag(NetCord.Permissions.MoveUsers) ||
-                           member.Permissions.HasFlag(NetCord.Permissions.Administrator));
-
-        return PlaybackPolicy.CanModerate(ListenerCount(), isModerator);
+        if (manager is { Voice.IsJoined: false } && Context.Guild is { } guild)
+            await orchestrator.CloseManagerAsync(guild.Id);
     }
 
-    private bool CanRemove(MusicTrackNew song) => song.RequestedBy == Context.User.Id || CanModerate();
+    // Refusals are only shown to the person who asked.
+    private Task RespondWithAsync(ControlResult result) =>
+        RespondAsync(InteractionCallback.Message(MusicViews.Notice(result.Message, failure: !result.Done).ToMessage(ephemeral: !result.Done)));
 
-    private Task RespondNoSongPlayingAsync() => RespondTextAsync("No song is currently playing.");
-
-    private Task RespondNoPermissionAsync() =>
-        RespondTextAsync("You need the Move Members permission (or be alone with me) to do that.", ephemeral: true);
-
-    // Messages can contain track titles, so they never get to ping anyone.
-    private Task RespondTextAsync(string text, bool ephemeral = false) =>
-        RespondAsync(InteractionCallback.Message(new InteractionMessageProperties
-        {
-            Content = text,
-            AllowedMentions = AllowedMentionsProperties.None,
-            Flags = ephemeral ? MessageFlags.Ephemeral : null
-        }));
-
-    private async Task TryModifyResponseAsync(Action<MessageOptions> action)
+    private async Task TryModifyResponseAsync(MessageView view, string command)
     {
         try
         {
-            await ModifyResponseAsync(action);
+            await ModifyResponseAsync(view.ApplyTo);
         }
         catch (Exception e)
         {
-            errors.Record(e, "play.respond", "Could not deliver the /play result to Discord.");
+            errors.Record(e, $"{command}.respond", $"Could not deliver the /{command} result to Discord.");
         }
     }
 

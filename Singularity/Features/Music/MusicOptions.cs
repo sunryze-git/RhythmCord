@@ -11,6 +11,12 @@ public sealed class MusicOptions
 
     public int QueuePageSize { get; init; } = 10;
 
+    /// <summary>Candidates offered by /search (Discord allows at most 25 in a menu).</summary>
+    public int SearchResults { get; init; } = 5;
+
+    /// <summary>How long a /search menu keeps working.</summary>
+    public TimeSpan SearchLifetime { get; init; } = TimeSpan.FromMinutes(5);
+
     /// <summary>How long the bot waits in an empty-queue session before leaving.</summary>
     public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromMinutes(10);
 

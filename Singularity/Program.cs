@@ -13,7 +13,9 @@ using NetCord;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 using NetCord.Hosting.Services.ApplicationCommands;
+using NetCord.Hosting.Services.ComponentInteractions;
 using NetCord.Services.ApplicationCommands;
+using NetCord.Services.ComponentInteractions;
 using Singularity.Features.General;
 using Singularity.Features.Booru;
 using Singularity.Features.Music;
@@ -85,6 +87,10 @@ public abstract class Program
         builder.Services.AddDiscordGateway();
         builder.Services.AddApplicationCommands<ApplicationCommandInteraction, ApplicationCommandContext>(
             options => options.ResultHandler = new CommandErrorHandler());
+        builder.Services.AddComponentInteractions<ButtonInteraction, ButtonInteractionContext>(
+            options => options.ResultHandler = new ComponentErrorHandler<ButtonInteractionContext>());
+        builder.Services.AddComponentInteractions<StringMenuInteraction, StringMenuInteractionContext>(
+            options => options.ResultHandler = new ComponentErrorHandler<StringMenuInteractionContext>());
         builder.Services.AddSingleton<CommandCooldown>();
         builder.Services.AddSingleton(TimeProvider.System);
 
@@ -162,6 +168,8 @@ public abstract class Program
         host.AddApplicationCommandModule<FunCommands>();
         host.AddApplicationCommandModule<MusicCommands>();
         host.AddApplicationCommandModule<BooruCommands>();
+        host.AddComponentInteractionModule<MusicButtons>();
+        host.AddComponentInteractionModule<MusicMenus>();
 
         try
         {
