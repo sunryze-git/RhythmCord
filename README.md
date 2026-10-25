@@ -90,7 +90,9 @@ All optional; defaults are in `MusicOptions` / `BooruOptions`.
 | `Music:MaxPlaylistTracks` | `200` | Tracks taken from one playlist. |
 | `Music:IdleTimeout` | `00:10:00` | Leave after this long with nothing to play. |
 | `Music:AloneTimeout` | `00:01:00` | Leave after this long alone in the voice channel. |
-| `Music:PlayCooldown` | `00:00:02` | Per-user cooldown on `/play`. |
+| `Music:PlayCooldown` | `00:00:02` | Per-user cooldown on `/play` and `/search`. |
+| `Music:SearchResults` | `5` | Matches offered by `/search` (at most 25). |
+| `Music:SearchLifetime` | `00:05:00` | How long a `/search` menu keeps working. |
 | `Music:StreamInfoLifetime` | `00:20:00` | How long a pre-fetched YouTube stream is trusted. |
 | `Music:ResolverOrder` | `["youtube","ytdlp"]` | Which lookup is tried first. yt-dlp is slower but survives YouTube changes. |
 | `Booru:Cooldown` | `00:00:03` | Per-user cooldown on `/e621`. |
@@ -143,13 +145,17 @@ JSON is available at `/api/stats` and a health check at `/healthz`.
 | Command | Description |
 | :--- | :--- |
 | `/play <query>` | Play a track via URL or search query (supports optional `next` flag). |
+| `/search <query>` | List the best matches in a menu and queue the one you pick. |
 | `/skip` | Skip the current track. The requester, someone with Move Members, or whoever is alone with the bot skips immediately; otherwise it is a majority vote. |
 | `/stop` | Stop playback and clear the guild queue (Move Members, or alone with the bot). |
-| `/queue [page]` | Display upcoming tracks, 10 per page. |
-| `/status` | View real-time playback position, track info, and source URL. |
-| `/loop` | Toggle looping on the current song. |
+| `/queue [page]` | Show upcoming tracks, 10 per page, with page buttons and a menu to remove songs. |
+| `/remove <position>` | Remove a song from the queue (the person who queued it, or Move Members). |
+| `/status` | Show the current song with playback controls. |
+| `/loop [mode]` | Repeat nothing (`Off`), the current song (`Track`) or the whole queue (`Queue`). Without a mode it moves to the next one. |
 | `/shuffle` | Randomize the order of the current queue. |
 | `/leave` | Disconnect the bot from the voice channel (Move Members, or alone with the bot). |
+
+Replies are Components V2 messages. `/status` carries Skip, Loop, Shuffle, Stop, Queue and Refresh buttons that follow the same rules as the commands; they only work for people in the bot's voice channel.
 
 ---
 
