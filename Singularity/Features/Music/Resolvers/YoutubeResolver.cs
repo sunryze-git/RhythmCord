@@ -76,6 +76,9 @@ internal class YoutubeResolver : IMediaResolver
         return [];
     }
 
+    public async Task<IReadOnlyList<MusicTrackNew>> SearchAsync(string query, int limit) =>
+        (await _backend.SearchVideosAsync(query, limit)).Select(video => FromVideo(video, query)).ToList();
+
     public bool CanStream(MusicTrackNew track) => track.Source == SongSource.YouTube;
 
     public async Task<Stream?> GetStreamAsync(MusicTrackNew track)

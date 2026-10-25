@@ -16,9 +16,11 @@ public class MediaResolverTests
         public SongSource Source => source;
         public bool CanResolve { get; init; } = true;
         public Func<string, IReadOnlyList<MusicTrackNew>> Resolve { get; init; } = _ => [];
+        public Func<string, int, IReadOnlyList<MusicTrackNew>> Search { get; init; } = (_, _) => [];
         public bool Streams { get; init; } = true;
         public Func<MusicTrackNew, Stream?> Stream { get; init; } = _ => new MemoryStream();
         public List<string> Queries { get; } = [];
+        public List<int> SearchLimits { get; } = [];
         public int PreFetched { get; private set; }
 
         public Task<bool> CanResolveAsync(string query) => Task.FromResult(CanResolve);
@@ -27,6 +29,13 @@ public class MediaResolverTests
         {
             Queries.Add(query);
             return Task.FromResult(Resolve(query));
+        }
+
+        public Task<IReadOnlyList<MusicTrackNew>> SearchAsync(string query, int limit)
+        {
+            Queries.Add(query);
+            SearchLimits.Add(limit);
+            return Task.FromResult(Search(query, limit));
         }
 
         public bool CanStream(MusicTrackNew track) => Streams;
@@ -106,6 +115,50 @@ public class MediaResolverTests
     {
         await Assert.ThrowsAsync<SearchException>(() =>
             Build(new BotMetrics(), null, new FakeResolver("a", SongSource.YouTube)).ResolveSongsAsync("   "));
+    }
+
+    [Fact]
+    public async Task Search_returns_the_first_resolvers_candidates_and_passes_the_limit_on()
+    {
+        var a = new FakeResolver("a", SongSource.YouTube) { Search = (_, limit) => Tracks.Many("hit", limit) };
+        var b = new FakeResolver("b", SongSource.Ytdlp) { Search = (_, _) => Found("from b") };
+
+        var result = await Build(new BotMetrics(), null, a, b).SearchAsync("q", 5);
+
+        Assert.Equal(5, result.Count);
+        Assert.Equal([5], a.SearchLimits);
+        Assert.Empty(b.Queries);
+    }
+
+    [Fact]
+    public async Task Search_falls_through_empty_results_and_failures()
+    {
+        var a = new FakeResolver("a", SongSource.YouTube) { Search = (_, _) => throw new InvalidOperationException("boom") };
+        var b = new FakeResolver("b", SongSource.Ytdlp) { Search = (_, _) => Found("from b") };
+
+        var result = await Build(new BotMetrics(), null, a, b).SearchAsync("q", 5);
+
+        Assert.Equal("from b", Assert.Single(result).Title);
+    }
+
+    [Fact]
+    public async Task Search_with_nothing_found_returns_empty()
+    {
+        var resolver = Build(new BotMetrics(), null, new FakeResolver("a", SongSource.YouTube));
+
+        Assert.Empty(await resolver.SearchAsync("q", 5));
+    }
+
+    [Theory]
+    [InlineData("   ")]
+    [InlineData("https://example.com/watch?v=1")]
+    public async Task Search_rejects_blank_text_and_links(string query)
+    {
+        var a = new FakeResolver("a", SongSource.YouTube) { Search = (_, _) => Found("never") };
+
+        await Assert.ThrowsAsync<SearchException>(() => Build(new BotMetrics(), null, a).SearchAsync(query, 5));
+
+        Assert.Empty(a.Queries);
     }
 
     [Fact]

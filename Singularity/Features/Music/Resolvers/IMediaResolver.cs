@@ -15,6 +15,9 @@ internal interface IMediaResolver
 
     Task<IReadOnlyList<MusicTrackNew>> ResolveAsync(string query);
 
+    /// <summary>Up to <paramref name="limit" /> matches for free text (never a URL), best first.</summary>
+    Task<IReadOnlyList<MusicTrackNew>> SearchAsync(string query, int limit);
+
     /// <summary>Whether this resolver can open an audio stream for the track (not necessarily one it resolved).</summary>
     bool CanStream(MusicTrackNew track);
 
