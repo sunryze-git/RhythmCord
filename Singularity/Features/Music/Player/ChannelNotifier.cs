@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using NetCord.Gateway;
 using NetCord.Rest;
-using NetCord.Services.ApplicationCommands;
+using Singularity.Features.Music.Models;
 using Singularity.Observability;
 
 namespace Singularity.Features.Music.Player;
@@ -12,10 +12,10 @@ internal sealed class ChannelNotifier(BotMetrics metrics, ILogger<ChannelNotifie
     private GatewayClient? _client;
     private long _channelId;
 
-    internal void Update(ApplicationCommandContext context)
+    internal void Update(RequestOrigin origin)
     {
-        _client = context.Client;
-        Interlocked.Exchange(ref _channelId, (long)context.Channel.Id);
+        _client = origin.Client;
+        Interlocked.Exchange(ref _channelId, (long)origin.ChannelId);
     }
 
     public async Task SendAsync(string message)

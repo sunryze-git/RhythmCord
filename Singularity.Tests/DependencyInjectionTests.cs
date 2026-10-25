@@ -46,6 +46,12 @@ public sealed class DependencyInjectionTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Search_is_shared_by_the_whole_bot_and_uses_the_track_source()
+    {
+        Assert.Same(_provider.GetRequiredService<MusicSearch>(), _provider.GetRequiredService<MusicSearch>());
+    }
+
+    [Fact]
     public void Each_guild_gets_its_own_player_and_voice_session_and_the_same_one_every_time()
     {
         var first = _orchestrator.GetOrCreateManager(1);

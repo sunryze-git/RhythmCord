@@ -1,4 +1,3 @@
-using NetCord.Services.ApplicationCommands;
 using Singularity.Features.Music.Player;
 using Singularity.Features.Music.Resolvers;
 using Singularity.Features.Music.Services;
@@ -23,12 +22,19 @@ internal sealed class GuildAudioInstance(
     ///     Nothing is queued unless both succeed, and a voice join made for a failed lookup is undone.
     ///     Returns the tracks that were actually queued (the queue has a size limit).
     /// </summary>
-    internal async Task<IReadOnlyList<MusicTrackNew>> EnqueueAsync(ApplicationCommandContext context, string term, bool next)
-    {
-        notifier.Update(context);
+    internal Task<IReadOnlyList<MusicTrackNew>> EnqueueAsync(RequestOrigin origin, string term, bool next) =>
+        EnqueueAsync(origin, ResolveAsync(term), next);
 
-        var resolveTask = ResolveAsync(term);
-        var joinTask = voice.JoinAsync(context);
+    /// <summary>Like the query overload, for tracks that were already looked up (a search result).</summary>
+    internal Task<IReadOnlyList<MusicTrackNew>> EnqueueAsync(RequestOrigin origin, IReadOnlyList<MusicTrackNew> tracks, bool next) =>
+        EnqueueAsync(origin, Task.FromResult(tracks), next);
+
+    private async Task<IReadOnlyList<MusicTrackNew>> EnqueueAsync(
+        RequestOrigin origin, Task<IReadOnlyList<MusicTrackNew>> resolveTask, bool next)
+    {
+        notifier.Update(origin);
+
+        var joinTask = voice.JoinAsync(origin);
 
         try
         {
@@ -43,7 +49,7 @@ internal sealed class GuildAudioInstance(
             throw;
         }
 
-        var result = await player.EnqueueAsync(await resolveTask, next, context.User.Id);
+        var result = await player.EnqueueAsync(await resolveTask, next, origin.UserId);
         if (result.Accepted.Count == 0)
             throw new SearchException($"The queue is full ({options.MaxQueueLength} tracks).");
 

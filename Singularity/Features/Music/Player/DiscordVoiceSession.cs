@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using NetCord.Gateway;
 using NetCord.Gateway.Voice;
-using NetCord.Services.ApplicationCommands;
+using Singularity.Features.Music.Models;
 using Singularity.Features.Music.Services;
 using Singularity.Observability;
 
@@ -34,25 +34,25 @@ internal sealed class DiscordVoiceSession(AudioService audio, BotMetrics metrics
     ///     Joins the invoking user's voice channel unless already connected. Concurrent callers share one join.
     ///     Returns true if this call made the connection.
     /// </summary>
-    internal async Task<bool> JoinAsync(ApplicationCommandContext context)
+    internal async Task<bool> JoinAsync(RequestOrigin origin)
     {
         await _joinLock.WaitAsync();
         try
         {
             if (_voice is not null) return false;
 
-            var guild = context.Guild ?? throw new VoiceJoinException("This command can only be used in a server.");
-            var voiceState = guild.VoiceStates.GetValueOrDefault(context.User.Id);
+            var guild = origin.Guild ?? throw new VoiceJoinException("This command can only be used in a server.");
+            var voiceState = guild.VoiceStates.GetValueOrDefault(origin.UserId);
             if (voiceState is not { ChannelId: { } channelId })
                 throw new VoiceJoinException("Join a voice channel first, then try again.");
 
-            _client = context.Client;
+            _client = origin.Client;
             _guildId = guild.Id;
 
             VoiceClient voice;
             try
             {
-                voice = await context.Client.JoinVoiceChannelAsync(_guildId, channelId);
+                voice = await origin.Client.JoinVoiceChannelAsync(_guildId, channelId);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
