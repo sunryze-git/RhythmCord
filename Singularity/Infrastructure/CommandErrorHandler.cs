@@ -31,7 +31,7 @@ public sealed class CommandErrorHandler : IApplicationCommandResultHandler<Appli
             services.GetRequiredService<BotMetrics>(),
             logger);
 
-        if (message is not null) await ReplyAsync(context, message, logger);
+        if (message is not null) await PrivateReply.SendAsync(context.Interaction, message, logger);
     }
 
     /// <summary>Logs and counts a failed command and returns what to tell the user, or null if nothing failed.</summary>
@@ -46,34 +46,5 @@ public sealed class CommandErrorHandler : IApplicationCommandResultHandler<Appli
         logger.LogInformation("/{Command} was refused: {Reason}", command, failure.Message);
         metrics.Error($"{command}.refused");
         return failure.Message;
-    }
-
-    private static async Task ReplyAsync(ApplicationCommandContext context, string message, ILogger logger)
-    {
-        var properties = new InteractionMessageProperties
-        {
-            Content = message,
-            Flags = MessageFlags.Ephemeral,
-            AllowedMentions = AllowedMentionsProperties.None
-        };
-
-        try
-        {
-            await context.Interaction.SendResponseAsync(InteractionCallback.Message(properties));
-            return;
-        }
-        catch (Exception)
-        {
-            // Already acknowledged (deferred or answered): fall through to a follow-up.
-        }
-
-        try
-        {
-            await context.Interaction.SendFollowupMessageAsync(properties);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Could not tell the user about a command failure.");
-        }
     }
 }
