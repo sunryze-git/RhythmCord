@@ -1,7 +1,12 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using NetCord;
 using NetCord.Gateway.Voice;
+using NetCord.Hosting.Services.ApplicationCommands;
+using NetCord.Hosting.Services.ComponentInteractions;
+using NetCord.Services.ComponentInteractions;
 using Singularity.Features.Booru.Clients;
 using Singularity.Features.Booru.Services;
 using Singularity.Features.Music;
@@ -63,6 +68,27 @@ public static class InfrastructureBootstrapper
         services.AddScoped<GuildAudioInstance>();
 
         return services;
+    }
+
+    /// <summary>Button and menu handling for the music feature. Needs the gateway to be registered as well.</summary>
+    public static IServiceCollection AddMusicInteractions(this IServiceCollection services)
+    {
+        services.AddComponentInteractions<ButtonInteraction, ButtonInteractionContext>(
+            options => options.ResultHandler = new ComponentErrorHandler<ButtonInteractionContext>());
+        services.AddComponentInteractions<StringMenuInteraction, StringMenuInteractionContext>(
+            options => options.ResultHandler = new ComponentErrorHandler<StringMenuInteractionContext>());
+
+        return services;
+    }
+
+    // Buttons and menus are separate services, so each module has to say which one it belongs to.
+    public static IHost AddMusicModules(this IHost host)
+    {
+        host.AddApplicationCommandModule<MusicCommands>();
+        host.AddComponentInteractionModule<ButtonInteractionContext, MusicButtons>();
+        host.AddComponentInteractionModule<StringMenuInteractionContext, MusicMenus>();
+
+        return host;
     }
 
     public static IServiceCollection AddBooruFeature(this IServiceCollection services)
