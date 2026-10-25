@@ -109,7 +109,13 @@ public sealed class YtdlpFailureTests : IDisposable
     private static MusicTrackNew Track(string path) => Tracks.Make("t") is var t
         ? new MusicTrackNew
         {
-            Query = "q", Url = "http://8.8.8.8/" + path, Title = "t", Author = "a", Duration = null, ThumbnailUrl = null, Source = SongSource.Ytdlp
+            Query = "q",
+            Url = "http://8.8.8.8/" + path,
+            Title = "t",
+            Author = "a",
+            Duration = null,
+            ThumbnailUrl = null,
+            Source = SongSource.Ytdlp
         }
         : t;
 
@@ -237,7 +243,13 @@ public sealed class YtdlpFailureTests : IDisposable
     {
         var track = new MusicTrackNew
         {
-            Query = "q", Url = "http://127.0.0.1/good", Title = "t", Author = "a", Duration = null, ThumbnailUrl = null, Source = SongSource.Ytdlp
+            Query = "q",
+            Url = "http://127.0.0.1/good",
+            Title = "t",
+            Author = "a",
+            Duration = null,
+            ThumbnailUrl = null,
+            Source = SongSource.Ytdlp
         };
 
         Assert.Null(await Resolver().GetStreamAsync(track));
