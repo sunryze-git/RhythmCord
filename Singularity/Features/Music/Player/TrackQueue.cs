@@ -45,6 +45,15 @@ internal sealed class TrackQueue(int capacity)
         return true;
     }
 
+    internal bool Remove(MusicTrackNew track)
+    {
+        var index = _items.FindIndex(item => ReferenceEquals(item, track));
+        if (index < 0) return false;
+
+        _items.RemoveAt(index);
+        return true;
+    }
+
     internal void Shuffle() => _items.Shuffle();
     internal void Clear() => _items.Clear();
 }
