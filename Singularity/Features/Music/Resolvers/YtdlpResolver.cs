@@ -30,8 +30,17 @@ internal class YtdlpResolver(ILogger<YtdlpResolver> logger, MusicOptions options
         if (isWebUrl && !await QueryUtil.IsPublicHostAsync(webUri))
             throw new SearchException("That URL is not allowed.");
 
-        var target = isWebUrl ? query : $"ytsearch1:{query}";
+        return await DumpAsync(isWebUrl ? query : $"ytsearch1:{query}", query);
+    }
 
+    public Task<IReadOnlyList<MusicTrackNew>> SearchAsync(string query, int limit)
+    {
+        query = query.Trim();
+        return DumpAsync($"ytsearch{limit}:{query}", query);
+    }
+
+    private async Task<IReadOnlyList<MusicTrackNew>> DumpAsync(string target, string query)
+    {
         var psi = new ProcessStartInfo
         {
             FileName = "yt-dlp",

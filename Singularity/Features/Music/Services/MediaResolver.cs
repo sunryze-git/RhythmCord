@@ -13,6 +13,9 @@ internal interface ITrackSource
     /// <summary>Finds tracks for a query. Empty means nothing matched; a failure to look is thrown.</summary>
     Task<IReadOnlyList<MusicTrackNew>> ResolveSongsAsync(string query);
 
+    /// <summary>Finds up to <paramref name="limit" /> candidates for free text. Empty means nothing matched.</summary>
+    Task<IReadOnlyList<MusicTrackNew>> SearchAsync(string query, int limit);
+
     /// <summary>Opens the track's audio, or throws <see cref="StreamUnavailableException" /> saying why it can't.</summary>
     Task<Stream> ResolveStreamAsync(MusicTrackNew track);
 
@@ -44,6 +47,23 @@ internal sealed class MediaResolver : ITrackSource
         if (string.IsNullOrWhiteSpace(query))
             throw new SearchException("The search query cannot be empty.");
 
+        return await FirstAnswerAsync(query, resolver => resolver.ResolveAsync(query));
+    }
+
+    public async Task<IReadOnlyList<MusicTrackNew>> SearchAsync(string query, int limit)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            throw new SearchException("The search query cannot be empty.");
+
+        if (QueryUtil.TryGetWebUri(query, out _))
+            throw new SearchException("Search takes words, not a link. Use /play to play a link.");
+
+        return await FirstAnswerAsync(query, resolver => resolver.SearchAsync(query, limit));
+    }
+
+    private async Task<IReadOnlyList<MusicTrackNew>> FirstAnswerAsync(
+        string query, Func<IMediaResolver, Task<IReadOnlyList<MusicTrackNew>>> lookup)
+    {
         _logger.LogDebug("Resolving songs for query: {Query}", query);
         _metrics.ResolveRequested();
         var sw = Stopwatch.StartNew();
@@ -57,7 +77,7 @@ internal sealed class MediaResolver : ITrackSource
             {
                 if (!await resolver.CanResolveAsync(query)) continue;
 
-                var results = await resolver.ResolveAsync(query);
+                var results = await lookup(resolver);
                 anyAnswered = true;
                 if (results.Count == 0) continue;
 

@@ -26,6 +26,8 @@ public sealed class GuildPlayerTests : IAsyncLifetime
 
         public Task<IReadOnlyList<MusicTrackNew>> ResolveSongsAsync(string query) => Task.FromResult<IReadOnlyList<MusicTrackNew>>([]);
 
+        public Task<IReadOnlyList<MusicTrackNew>> SearchAsync(string query, int limit) => Task.FromResult<IReadOnlyList<MusicTrackNew>>([]);
+
         public Task<Stream> ResolveStreamAsync(MusicTrackNew track)
         {
             if (StreamFailures.TryGetValue(track.Title, out var failure)) throw failure;

@@ -29,6 +29,19 @@ internal class YoutubeBackend(ILogger<YoutubeBackend> logger)
         return null;
     }
 
+    internal async Task<IReadOnlyList<IVideo>> SearchVideosAsync(string query, int limit)
+    {
+        logger.LogDebug("Searching YouTube for up to {Limit} results: {Query}", limit, query);
+        var results = new List<IVideo>();
+        await foreach (var result in _client.Search.GetVideosAsync(query))
+        {
+            results.Add(result);
+            if (results.Count >= limit) break;
+        }
+
+        return results;
+    }
+
     internal async Task<IReadOnlyList<PlaylistVideo>> GetPlaylistVideosAsync(string playlistUrlOrId, int maxVideos)
     {
         logger.LogDebug("Getting playlist videos for {PlaylistUrlOrId}", playlistUrlOrId);
