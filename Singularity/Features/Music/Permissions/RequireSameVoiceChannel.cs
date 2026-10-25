@@ -5,36 +5,15 @@ namespace Singularity.Features.Music.Permissions;
 
 internal class RequireSameVoiceChannelAttribute : PreconditionAttribute<ApplicationCommandContext>
 {
-    public override ValueTask<PreconditionResult> EnsureCanExecuteAsync(ApplicationCommandContext context, IServiceProvider? services)
-    {
-        if (context.Guild is null)
-            return new ValueTask<PreconditionResult>(PreconditionResult.Fail("This command can only be used in a server."));
+    public override ValueTask<PreconditionResult> EnsureCanExecuteAsync(ApplicationCommandContext context, IServiceProvider? services) =>
+        new(Result(VoiceChecks.SameChannel(context.Guild, context.User.Id, context.Client.Id)));
 
-        if (!context.Guild.VoiceStates.TryGetValue(context.User.Id, out var userState) || userState.ChannelId == null)
-            return new ValueTask<PreconditionResult>(PreconditionResult.Fail("You are not in a voice channel."));
-
-        if (!context.Guild.VoiceStates.TryGetValue(context.Client.Id, out var botState) || botState.ChannelId == null)
-            return new ValueTask<PreconditionResult>(PreconditionResult.Fail("I am not in a voice channel."));
-
-        return userState.ChannelId == botState.ChannelId
-            ? new ValueTask<PreconditionResult>(PreconditionResult.Success)
-            : new ValueTask<PreconditionResult>(PreconditionResult.Fail("You must be in the same voice channel as me!"));
-    }
+    internal static PreconditionResult Result(string? problem) =>
+        problem is null ? PreconditionResult.Success : PreconditionResult.Fail(problem);
 }
 
-// Like RequireSameVoiceChannel, but passes when the bot is not in a voice channel yet (e.g. the first /play).
 internal class RequireSameVoiceChannelIfConnectedAttribute : PreconditionAttribute<ApplicationCommandContext>
 {
-    public override ValueTask<PreconditionResult> EnsureCanExecuteAsync(ApplicationCommandContext context, IServiceProvider? services)
-    {
-        if (context.Guild is null)
-            return new ValueTask<PreconditionResult>(PreconditionResult.Fail("This command can only be used in a server."));
-
-        if (!context.Guild.VoiceStates.TryGetValue(context.Client.Id, out var botState) || botState.ChannelId == null)
-            return new ValueTask<PreconditionResult>(PreconditionResult.Success);
-
-        return context.Guild.VoiceStates.TryGetValue(context.User.Id, out var userState) && userState.ChannelId == botState.ChannelId
-            ? new ValueTask<PreconditionResult>(PreconditionResult.Success)
-            : new ValueTask<PreconditionResult>(PreconditionResult.Fail("You must be in the same voice channel as me!"));
-    }
+    public override ValueTask<PreconditionResult> EnsureCanExecuteAsync(ApplicationCommandContext context, IServiceProvider? services) =>
+        new(RequireSameVoiceChannelAttribute.Result(VoiceChecks.SameChannelIfConnected(context.Guild, context.User.Id, context.Client.Id)));
 }
