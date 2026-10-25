@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
-using Singularity.Features.Music.Models;
 using NetCord.Services;
 using NetCord.Services.ApplicationCommands;
+using Singularity.Features.Music.Models;
 
 namespace Singularity.Features.Music.Permissions;
 

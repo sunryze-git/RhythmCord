@@ -1,13 +1,13 @@
+using Microsoft.Extensions.Logging;
+using NetCord;
+using NetCord.Rest;
+using NetCord.Services.ApplicationCommands;
 using Singularity.Features.Music.Models;
 using Singularity.Features.Music.Permissions;
 using Singularity.Features.Music.Player;
 using Singularity.Features.Music.Views;
-using NetCord;
-using NetCord.Rest;
-using NetCord.Services.ApplicationCommands;
 using Singularity.Infrastructure;
 using Singularity.Observability;
-using Microsoft.Extensions.Logging;
 
 namespace Singularity.Features.Music;
 
