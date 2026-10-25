@@ -1,15 +1,15 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
-using Singularity.Features.Music;
-using Singularity.Features.Music.Backends;
-using Singularity.Features.Music.Models;
-using Singularity.Features.Music.Resolvers;
-using Singularity.Features.Music.Player;
-using Singularity.Features.Music.Services;
 using NetCord.Gateway.Voice;
 using Singularity.Features.Booru.Clients;
 using Singularity.Features.Booru.Services;
+using Singularity.Features.Music;
+using Singularity.Features.Music.Backends;
+using Singularity.Features.Music.Models;
+using Singularity.Features.Music.Player;
+using Singularity.Features.Music.Resolvers;
+using Singularity.Features.Music.Services;
 
 namespace Singularity.Infrastructure;
 
