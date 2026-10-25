@@ -5,10 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
-using Singularity.Features.Music.Models;
-using Singularity.Infrastructure;
-using Singularity.Observability;
-
 using NetCord;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
@@ -16,10 +12,13 @@ using NetCord.Hosting.Services.ApplicationCommands;
 using NetCord.Hosting.Services.ComponentInteractions;
 using NetCord.Services.ApplicationCommands;
 using NetCord.Services.ComponentInteractions;
-using Singularity.Features.General;
 using Singularity.Features.Booru;
+using Singularity.Features.General;
 using Singularity.Features.Music;
 using Singularity.Features.Music.Backends;
+using Singularity.Features.Music.Models;
+using Singularity.Infrastructure;
+using Singularity.Observability;
 
 namespace Singularity;
 
