@@ -71,6 +71,18 @@ public class TrackQueueTests
     }
 
     [Fact]
+    public void Remove_takes_out_exactly_that_track()
+    {
+        var q = new TrackQueue(10);
+        var same = Tracks.Make("same");
+        q.Add([Tracks.Make("same"), same, Tracks.Make("other")], playNext: false);
+
+        Assert.True(q.Remove(same));
+        Assert.Equal(["same", "other"], q.Items.Select(t => t.Title));
+        Assert.False(q.Remove(same));
+    }
+
+    [Fact]
     public void Clear_empties_the_queue()
     {
         var q = new TrackQueue(5);

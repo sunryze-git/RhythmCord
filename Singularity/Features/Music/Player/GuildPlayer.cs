@@ -9,7 +9,7 @@ namespace Singularity.Features.Music.Player;
 
 /// <summary>
 ///     One server's music player, written as a small actor: every command is a message on a channel and a single loop
-///     handles them one at a time. All playback state (queue, current track, loop flag, skip votes, idle/close state)
+///     handles them one at a time. All playback state (queue, current track, loop mode, skip votes, idle/close state)
 ///     is owned by that loop and never touched from anywhere else, so there are no locks and no races to reason about.
 ///     Callers read <see cref="Snapshot" /> (an immutable copy) and ask for changes through the async methods.
 ///     Playing a track runs on its own task and reports back with a message when it ends.
@@ -22,7 +22,8 @@ internal sealed class GuildPlayer : IAsyncDisposable
     private sealed record EnqueueMessage(IReadOnlyList<MusicTrackNew> Tracks, bool Next, TaskCompletionSource<EnqueueResult> Reply) : Message;
     private sealed record SkipMessage(MusicTrackNew? Expected, bool ClearQueue, TaskCompletionSource Reply) : Message;
     private sealed record ShuffleMessage(TaskCompletionSource Reply) : Message;
-    private sealed record LoopMessage(MusicTrackNew? Expected, TaskCompletionSource<bool> Reply) : Message;
+    private sealed record LoopMessage(LoopMode? Mode, MusicTrackNew? Expected, TaskCompletionSource<LoopMode?> Reply) : Message;
+    private sealed record RemoveMessage(MusicTrackNew Track, TaskCompletionSource<bool> Reply) : Message;
     private sealed record VoteMessage(ulong UserId, MusicTrackNew? Expected, TaskCompletionSource<int> Reply) : Message;
     private sealed record CloseMessage(string Reason, bool OnlyIfUnused, bool FromDispose) : Message;
     private sealed record TrackEndedMessage(int Generation, Outcome Outcome) : Message;
@@ -44,7 +45,7 @@ internal sealed class GuildPlayer : IAsyncDisposable
     private readonly TrackQueue _queue;
     private readonly HashSet<ulong> _skipVotes = [];
     private MusicTrackNew? _current;
-    private bool _looping;
+    private LoopMode _loop;
     private bool _closing;
     private CancellationTokenSource? _trackCts;
     private int _generation;
@@ -117,8 +118,15 @@ internal sealed class GuildPlayer : IAsyncDisposable
 
     internal Task ShuffleAsync() => Ask(reply => new ShuffleMessage(reply));
 
-    /// <summary>Toggles looping of the current track; returns the new state (false if nothing is playing).</summary>
-    internal Task<bool> ToggleLoopAsync(MusicTrackNew? expected = null) => Ask<bool>(reply => new LoopMessage(expected, reply));
+    /// <summary>
+    ///     Sets the loop mode, or moves to the next one when <paramref name="mode" /> is null. Returns the new mode, or
+    ///     null if nothing is playing.
+    /// </summary>
+    internal Task<LoopMode?> SetLoopAsync(LoopMode? mode, MusicTrackNew? expected = null) =>
+        Ask<LoopMode?>(reply => new LoopMessage(mode, expected, reply));
+
+    /// <summary>Takes a waiting track out of the queue; false if it already started playing or was removed.</summary>
+    internal Task<bool> RemoveAsync(MusicTrackNew track) => Ask<bool>(reply => new RemoveMessage(track, reply));
 
     /// <summary>Registers a skip vote and returns the vote count, or -1 if that track is no longer playing.</summary>
     internal Task<int> VoteSkipAsync(ulong userId, MusicTrackNew? expected = null) =>
@@ -171,6 +179,7 @@ internal sealed class GuildPlayer : IAsyncDisposable
                 Complete(m.Reply);
                 break;
             case LoopMessage m: OnLoop(m); break;
+            case RemoveMessage m: Complete(m.Reply, _queue.Remove(m.Track)); break;
             case VoteMessage m: OnVote(m); break;
             case TrackEndedMessage m: OnTrackEnded(m); break;
             case CloseMessage m: OnClose(m); break;
@@ -209,11 +218,15 @@ internal sealed class GuildPlayer : IAsyncDisposable
             return;
         }
 
-        if (m.ClearQueue) _queue.Clear();
+        if (m.ClearQueue)
+        {
+            _queue.Clear();
+            _loop = LoopMode.Off;
+        }
 
         if (_current is not null)
         {
-            _looping = false;
+            if (_loop == LoopMode.Track) _loop = LoopMode.Off;
             _trackCts?.Cancel(); // the track task reports back with TrackEnded, which moves on to the next track
         }
 
@@ -224,12 +237,12 @@ internal sealed class GuildPlayer : IAsyncDisposable
     {
         if (_current is null || (m.Expected is not null && !ReferenceEquals(m.Expected, _current)))
         {
-            Complete(m.Reply, false);
+            Complete(m.Reply, null);
             return;
         }
 
-        _looping = !_looping;
-        Complete(m.Reply, _looping);
+        _loop = m.Mode ?? _loop.Next();
+        Complete(m.Reply, _loop);
     }
 
     private void OnVote(VoteMessage m)
@@ -254,14 +267,21 @@ internal sealed class GuildPlayer : IAsyncDisposable
 
         if (m.Outcome == Outcome.Cancelled && !_closing) _metrics.TrackSkipped();
 
-        // Looping = play the same track again. Works for every source, since each play opens a fresh stream.
-        if (m.Outcome == Outcome.Completed && _looping && !_closing && finished is not null)
+        if (!_closing && finished is not null)
         {
-            StartTrack(finished);
-            return;
+            // Looping a track plays it again. Works for every source, since each play opens a fresh stream.
+            if (m.Outcome == Outcome.Completed && _loop == LoopMode.Track)
+            {
+                StartTrack(finished);
+                return;
+            }
+
+            // A track that failed is not put back, or it would fail again on every round.
+            if (m.Outcome != Outcome.Failed && _loop == LoopMode.Queue)
+                _queue.Add([finished], playNext: false);
         }
 
-        _looping = false;
+        if (_loop == LoopMode.Track) _loop = LoopMode.Off;
         _current = null;
 
         if (_closing) FinishClose();
@@ -277,7 +297,7 @@ internal sealed class GuildPlayer : IAsyncDisposable
         _logger.LogDebug("Closing player: {Reason}", m.Reason);
 
         _queue.Clear();
-        _looping = false;
+        _loop = LoopMode.Off;
         CancelIdle();
         _watchCts.Cancel();
 
@@ -303,6 +323,7 @@ internal sealed class GuildPlayer : IAsyncDisposable
         else
         {
             _current = null;
+            _loop = LoopMode.Off;
             BeginIdle();
         }
     }
@@ -339,7 +360,7 @@ internal sealed class GuildPlayer : IAsyncDisposable
     }
 
     private void Publish() =>
-        _snapshot = new PlayerSnapshot(_current, [.. _queue.Items], _looping, _skipVotes.Count, _closing);
+        _snapshot = new PlayerSnapshot(_current, [.. _queue.Items], _loop, _skipVotes.Count, _closing);
 
     // Replies are sent only after the new state is published, so a caller that awaits a command and then reads
     // Snapshot always sees that command's effect.
@@ -505,6 +526,7 @@ internal sealed class GuildPlayer : IAsyncDisposable
             case SkipMessage m: m.Reply.TrySetException(ex); break;
             case ShuffleMessage m: m.Reply.TrySetException(ex); break;
             case LoopMessage m: m.Reply.TrySetException(ex); break;
+            case RemoveMessage m: m.Reply.TrySetException(ex); break;
             case VoteMessage m: m.Reply.TrySetException(ex); break;
         }
     }

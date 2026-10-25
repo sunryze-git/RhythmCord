@@ -9,6 +9,9 @@ internal enum SongSource
 /// <summary>Provider-neutral description of a track. Any provider-specific state lives in its resolver.</summary>
 internal class MusicTrackNew
 {
+    // Identifies this entry in buttons and menus that outlive the message they were drawn for.
+    public string Id { get; } = Guid.NewGuid().ToString("N");
+
     public required string Query { get; init; }
     public required string Url { get; init; }
     public required string Title { get; init; }

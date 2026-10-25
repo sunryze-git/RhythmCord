@@ -196,11 +196,12 @@ public class MusicCommands(
         await RespondAsync(InteractionCallback.Message(new InteractionMessageProperties { Embeds = [embed] }));
     }
 
-    [SlashCommand("loop", "Toggles looping the current playing song.")]
+    [SlashCommand("loop", "Sets what repeats: the current song, the whole queue, or nothing.")]
     [RequireUserVoice]
     [RequireBotInVoiceChannel]
     [RequireSameVoiceChannel]
-    public async Task LoopAsync()
+    public async Task LoopAsync(
+        [SlashCommandParameter(Name = "mode", Description = "Leave empty to move to the next mode")] LoopMode? mode = null)
     {
         using var scope = Begin("loop");
 
@@ -213,10 +214,43 @@ public class MusicCommands(
             return;
         }
 
-        var isLooping = await player.ToggleLoopAsync(song);
-        await RespondTextAsync(isLooping
-            ? $"🔁 Started looping **{song.Title}**"
-            : $"➡️ Stopped looping **{song.Title}**");
+        var applied = await player.SetLoopAsync(mode, song);
+        await RespondTextAsync(applied switch
+        {
+            LoopMode.Track => $"🔂 Looping **{song.Title}**",
+            LoopMode.Queue => "🔁 Looping the whole queue.",
+            LoopMode.Off => "➡️ Loop is off.",
+            _ => "That song already finished."
+        });
+    }
+
+    [SlashCommand("remove", "Removes a song from the queue.")]
+    [RequireUserVoice]
+    [RequireBotInVoiceChannel]
+    [RequireSameVoiceChannel]
+    public async Task RemoveAsync(
+        [SlashCommandParameter(Name = "position", Description = "Position shown in /queue")] int position)
+    {
+        using var scope = Begin("remove");
+
+        var player = GetManager().Player;
+        var pending = player.Snapshot.Pending;
+        if (position < 1 || position > pending.Count)
+        {
+            await RespondTextAsync($"There is no song at position {position}.", ephemeral: true);
+            return;
+        }
+
+        var song = pending[position - 1];
+        if (!CanRemove(song))
+        {
+            await RespondTextAsync("Only the person who queued it, or someone with Move Members, can remove that song.", ephemeral: true);
+            return;
+        }
+
+        await RespondTextAsync(await player.RemoveAsync(song)
+            ? $"Removed **{song.Title}** from the queue."
+            : "That song is no longer in the queue.");
     }
 
     [SlashCommand("shuffle", "Shuffles the current queue.")]
@@ -323,6 +357,8 @@ public class MusicCommands(
 
         return PlaybackPolicy.CanModerate(ListenerCount(), isModerator);
     }
+
+    private bool CanRemove(MusicTrackNew song) => song.RequestedBy == Context.User.Id || CanModerate();
 
     private Task RespondNoSongPlayingAsync() => RespondTextAsync("No song is currently playing.");
 

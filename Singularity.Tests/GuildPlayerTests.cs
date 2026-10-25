@@ -268,16 +268,116 @@ public sealed class GuildPlayerTests : IAsyncLifetime
         await EnqueueAsync("a", "b");
         await WaitForCurrent("a");
 
-        Assert.True(await _player.ToggleLoopAsync());
+        Assert.Equal(LoopMode.Track, await _player.SetLoopAsync(LoopMode.Track));
         Assert.True(_player.Snapshot.Looping);
 
         _audio.FinishCurrent();
         await WaitUntil(() => _audio.StartedSnapshot().Count(t => t == "a") == 2, "'a' to play again");
         Assert.Equal("a", _player.Snapshot.Current!.Title);
 
-        Assert.False(await _player.ToggleLoopAsync());
+        Assert.Equal(LoopMode.Off, await _player.SetLoopAsync(LoopMode.Off));
         _audio.FinishCurrent();
         await WaitForCurrent("b");
+    }
+
+    [Fact]
+    public async Task Setting_no_loop_mode_moves_through_off_track_and_queue()
+    {
+        Start();
+        await EnqueueAsync("a");
+        await WaitForCurrent("a");
+
+        Assert.Equal(LoopMode.Track, await _player.SetLoopAsync(null));
+        Assert.Equal(LoopMode.Queue, await _player.SetLoopAsync(null));
+        Assert.Equal(LoopMode.Off, await _player.SetLoopAsync(null));
+    }
+
+    [Fact]
+    public async Task Queue_loop_puts_each_finished_track_at_the_back()
+    {
+        Start();
+        await EnqueueAsync("a", "b", "c");
+        await WaitForCurrent("a");
+        await _player.SetLoopAsync(LoopMode.Queue);
+
+        _audio.FinishCurrent();
+        await WaitForCurrent("b");
+        Assert.Equal(["c", "a"], _player.Snapshot.Pending.Select(t => t.Title));
+
+        _audio.FinishCurrent();
+        await WaitForCurrent("c");
+        _audio.FinishCurrent();
+        await WaitUntil(() => _audio.StartedSnapshot().Count(t => t == "a") == 2, "'a' to come around again");
+        Assert.Equal(LoopMode.Queue, _player.Snapshot.Loop);
+    }
+
+    [Fact]
+    public async Task Skipping_during_queue_loop_keeps_the_loop_and_the_skipped_track()
+    {
+        Start();
+        await EnqueueAsync("a", "b");
+        await WaitForCurrent("a");
+        await _player.SetLoopAsync(LoopMode.Queue);
+
+        await _player.SkipAsync();
+
+        await WaitForCurrent("b");
+        Assert.Equal(["a"], _player.Snapshot.Pending.Select(t => t.Title));
+        Assert.Equal(LoopMode.Queue, _player.Snapshot.Loop);
+    }
+
+    [Fact]
+    public async Task Queue_loop_does_not_put_back_a_track_that_failed()
+    {
+        Start();
+        _audio.FailOn.Add("bad");
+        await EnqueueAsync("a", "bad", "c");
+        await WaitForCurrent("a");
+        await _player.SetLoopAsync(LoopMode.Queue);
+
+        _audio.FinishCurrent();
+        await WaitForCurrent("c");
+
+        Assert.DoesNotContain("bad", _player.Snapshot.Pending.Select(t => t.Title));
+    }
+
+    [Fact]
+    public async Task Stopping_ends_a_queue_loop()
+    {
+        Start();
+        await EnqueueAsync("a", "b");
+        await WaitForCurrent("a");
+        await _player.SetLoopAsync(LoopMode.Queue);
+
+        await _player.StopAsync();
+
+        await WaitUntil(() => _player.Snapshot.Current is null, "playback to stop");
+        Assert.Empty(_player.Snapshot.Pending);
+        Assert.Equal(LoopMode.Off, _player.Snapshot.Loop);
+    }
+
+    [Fact]
+    public async Task Remove_takes_a_waiting_track_out_of_the_queue()
+    {
+        Start();
+        await EnqueueAsync("a", "b", "c");
+        await WaitForCurrent("a");
+        var b = _player.Snapshot.Pending[0];
+
+        Assert.True(await _player.RemoveAsync(b));
+        Assert.Equal(["c"], _player.Snapshot.Pending.Select(t => t.Title));
+        Assert.False(await _player.RemoveAsync(b));
+    }
+
+    [Fact]
+    public async Task Remove_ignores_the_track_that_is_already_playing()
+    {
+        Start();
+        await EnqueueAsync("a", "b");
+        await WaitForCurrent("a");
+
+        Assert.False(await _player.RemoveAsync(_player.Snapshot.Current!));
+        Assert.Equal("a", _player.Snapshot.Current!.Title);
     }
 
     [Fact]
@@ -286,7 +386,7 @@ public sealed class GuildPlayerTests : IAsyncLifetime
         Start();
         await EnqueueAsync("a", "b");
         await WaitForCurrent("a");
-        await _player.ToggleLoopAsync();
+        await _player.SetLoopAsync(LoopMode.Track);
 
         await _player.SkipAsync();
 
@@ -295,11 +395,11 @@ public sealed class GuildPlayerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Toggling_loop_with_nothing_playing_does_nothing()
+    public async Task Setting_loop_with_nothing_playing_does_nothing()
     {
         Start();
 
-        Assert.False(await _player.ToggleLoopAsync());
+        Assert.Null(await _player.SetLoopAsync(LoopMode.Track));
         Assert.False(_player.Snapshot.Looping);
     }
 

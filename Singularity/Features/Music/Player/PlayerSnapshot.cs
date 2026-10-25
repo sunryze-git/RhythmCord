@@ -7,11 +7,13 @@ namespace Singularity.Features.Music.Player;
 internal sealed record PlayerSnapshot(
     MusicTrackNew? Current,
     ImmutableList<MusicTrackNew> Pending,
-    bool Looping,
+    LoopMode Loop,
     int SkipVotes,
     bool Closing)
 {
-    internal static readonly PlayerSnapshot Empty = new(null, [], false, 0, false);
+    internal static readonly PlayerSnapshot Empty = new(null, [], LoopMode.Off, 0, false);
+
+    internal bool Looping => Loop != LoopMode.Off;
 
     internal bool HasWork => Current is not null || !Pending.IsEmpty;
 }
