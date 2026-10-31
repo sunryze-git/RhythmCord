@@ -20,7 +20,53 @@ internal static class MusicViews
     internal static MessageView Notice(string text, bool failure = false) =>
         Card(failure ? Red : Blue, new TextDisplayProperties(Escape(text)));
 
-    internal static MessageView Added(IReadOnlyList<MusicTrackNew> songs, bool playsNext)
+    internal static MessageView Added(IReadOnlyList<MusicTrackNew> songs, bool playsNext) => Added(songs, playsNext, footer: null);
+
+    internal static MessageView ScheduledPlayStarted(IReadOnlyList<MusicTrackNew> songs, ScheduledPlay play) =>
+        Added(songs, play.Next, $"-# Scheduled by {Mention(play.Origin.UserId)}");
+
+    internal static MessageView ScheduledPlayFailed(ScheduledPlay play, string reason) =>
+        Notice($"Couldn't start the scheduled play of {Truncate(play.Songs[0].Title, 100)}: {reason}", failure: true);
+
+    internal static MessageView Scheduled(ScheduledPlay play)
+    {
+        var song = play.Songs[0];
+        var details = new TextDisplayProperties($"{ScheduledSongs(play, Link(song))}\n*{Escape(song.Author)}*\n{Length(song)}");
+
+        return new MessageView(
+        [
+            new ComponentContainerProperties(
+            [
+                new TextDisplayProperties($"### Scheduled for {Timestamp(play.At, 't')} ({Timestamp(play.At, 'R')})"),
+                WithThumbnail(song, details),
+                new TextDisplayProperties(
+                    $"-# Plays in <#{play.VoiceChannelId}> if anyone is there · cancel with /schedule cancel id:{play.Id}")
+            ]) { AccentColor = Blue }
+        ]);
+    }
+
+    internal static MessageView ScheduleList(IReadOnlyList<ScheduledPlay> plays)
+    {
+        if (plays.Count == 0)
+            return Notice("Nothing is scheduled. Use /schedule play to add something.");
+
+        var lines = plays.Select(play =>
+            $"`{play.Id}` {Timestamp(play.At, 't')} ({Timestamp(play.At, 'R')}) · " +
+            $"{ScheduledSongs(play, Escape(Truncate(play.Songs[0].Title, 60)))} · <#{play.VoiceChannelId}> · {Mention(play.Origin.UserId)}");
+
+        return new MessageView(
+        [
+            new ComponentContainerProperties(
+            [
+                new TextDisplayProperties("### Scheduled plays"),
+                new ComponentSeparatorProperties(),
+                new TextDisplayProperties(string.Join('\n', lines)),
+                new TextDisplayProperties("-# Cancel one with /schedule cancel id:<number>")
+            ]) { AccentColor = Blue }
+        ]);
+    }
+
+    private static MessageView Added(IReadOnlyList<MusicTrackNew> songs, bool playsNext, string? footer)
     {
         var song = songs[0];
         var title = songs.Count > 1 ? "Added playlist to queue" : playsNext ? "Playing next" : "Added to queue";
@@ -34,6 +80,9 @@ internal static class MusicViews
 
         if (songs.Count > 1)
             parts.Add(new TextDisplayProperties($"-# …and {songs.Count - 1} more"));
+
+        if (footer is not null)
+            parts.Add(new TextDisplayProperties(footer));
 
         return new MessageView([new ComponentContainerProperties(parts) { AccentColor = Blue }]);
     }
@@ -172,6 +221,11 @@ internal static class MusicViews
     private static string Length(MusicTrackNew song) => song.Duration?.ToClockString() ?? "Live";
 
     private static string Mention(ulong userId) => userId == 0 ? "someone" : $"<@{userId}>";
+
+    private static string Timestamp(DateTimeOffset at, char style) => $"<t:{at.ToUnixTimeSeconds()}:{style}>";
+
+    private static string ScheduledSongs(ScheduledPlay play, string firstTitle) =>
+        play.Songs.Count > 1 ? $"**{firstTitle}** and {play.Songs.Count - 1} more" : $"**{firstTitle}**";
 
     private static string Truncate(string text, int max) => text.Length <= max ? text : text[..(max - 1)] + "…";
 

@@ -13,6 +13,13 @@ internal sealed record MessageView(IReadOnlyList<IMessageComponentProperties> Co
         AllowedMentions = AllowedMentionsProperties.None
     };
 
+    internal MessageProperties ToChannelMessage() => new()
+    {
+        Components = Components,
+        Flags = MessageFlags.IsComponentsV2,
+        AllowedMentions = AllowedMentionsProperties.None
+    };
+
     internal void ApplyTo(MessageOptions options)
     {
         options.Components = Components;

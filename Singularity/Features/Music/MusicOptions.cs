@@ -17,6 +17,14 @@ public sealed class MusicOptions
     /// <summary>How long a /search menu keeps working.</summary>
     public TimeSpan SearchLifetime { get; init; } = TimeSpan.FromMinutes(5);
 
+    /// <summary>Most /schedule plays waiting in one server.</summary>
+    public int MaxScheduledPlays { get; init; } = 10;
+
+    /// <summary>Time zone of clock times given to /schedule, as an IANA name. Empty means the system's.</summary>
+    public string TimeZone { get; init; } = string.Empty;
+
+    internal TimeZoneInfo FindTimeZone() => TimeZone.Length > 0 ? TimeZoneInfo.FindSystemTimeZoneById(TimeZone) : TimeZoneInfo.Local;
+
     /// <summary>How long the bot waits in an empty-queue session before leaving.</summary>
     public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromMinutes(10);
 

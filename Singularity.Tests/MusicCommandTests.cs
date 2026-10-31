@@ -68,7 +68,7 @@ public sealed class MusicCommandTests : MusicHarnessBase
         var commands = await RegisteredCommandsAsync();
 
         Assert.Equal(
-            ["leave", "loop", "play", "queue", "remove", "search", "shuffle", "skip", "status", "stop"],
+            ["leave", "loop", "play", "queue", "remove", "schedule", "search", "shuffle", "skip", "status", "stop"],
             commands.Select(c => (string)c!["name"]!).Order());
         Assert.All(commands, c => Assert.InRange(((string)c!["description"]!).Length, 1, 100));
     }

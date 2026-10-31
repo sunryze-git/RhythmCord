@@ -5,8 +5,17 @@ using Singularity.Features.Music.Player;
 
 namespace Singularity.Features.Music.Models;
 
-/// <summary>Who asked for something and where, whether it came from a slash command or from a button or menu.</summary>
-internal sealed record RequestOrigin(GatewayClient Client, Guild? Guild, ulong UserId, ulong ChannelId, bool HasMoveMembers)
+/// <summary>
+///     Who asked for something and where, whether it came from a slash command or from a button or menu.
+///     <see cref="VoiceChannelId" /> is the voice channel to join; null means the one the user is in.
+/// </summary>
+internal sealed record RequestOrigin(
+    GatewayClient Client,
+    Guild? Guild,
+    ulong UserId,
+    ulong ChannelId,
+    bool HasMoveMembers,
+    ulong? VoiceChannelId = null)
 {
     internal static RequestOrigin From<TContext>(TContext context)
         where TContext : IGatewayClientContext, IGuildContext, IUserContext, IChannelContext, IInteractionContext

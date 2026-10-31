@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using NetCord;
 using NetCord.Gateway.Voice;
 using NetCord.Hosting.Services.ApplicationCommands;
@@ -15,6 +16,7 @@ using Singularity.Features.Music.Models;
 using Singularity.Features.Music.Player;
 using Singularity.Features.Music.Resolvers;
 using Singularity.Features.Music.Services;
+using Singularity.Observability;
 
 namespace Singularity.Infrastructure;
 
@@ -49,6 +51,14 @@ public static class InfrastructureBootstrapper
         services.AddSingleton<ITrackSource>(sp => sp.GetRequiredService<MediaResolver>());
         services.AddSingleton(sp => new MusicSearch(
             sp.GetRequiredService<ITrackSource>(), sp.GetRequiredService<MusicOptions>(), sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton(sp => new MusicScheduler(
+            sp.GetRequiredService<GuildAudioInstanceOrchestrator>(),
+            sp.GetRequiredService<ITrackSource>(),
+            sp.GetRequiredService<MusicOptions>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<BotMetrics>(),
+            sp.GetRequiredService<ErrorReporter>(),
+            sp.GetRequiredService<ILogger<MusicScheduler>>()));
 
         // Backends and resolvers; MediaResolver tries them in the order set by Music:ResolverOrder.
         services.AddSingleton<YoutubeBackend>();
@@ -85,6 +95,7 @@ public static class InfrastructureBootstrapper
     public static IHost AddMusicModules(this IHost host)
     {
         host.AddApplicationCommandModule<MusicCommands>();
+        host.AddApplicationCommandModule<ScheduleCommands>();
         host.AddComponentInteractionModule<ButtonInteractionContext, MusicButtons>();
         host.AddComponentInteractionModule<StringMenuInteractionContext, MusicMenus>();
 

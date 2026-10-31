@@ -31,7 +31,7 @@ internal sealed class DiscordVoiceSession(AudioService audio, BotMetrics metrics
     public TimeSpan Position => audio.Position;
 
     /// <summary>
-    ///     Joins the invoking user's voice channel unless already connected. Concurrent callers share one join.
+    ///     Joins the origin's voice channel unless already connected. Concurrent callers share one join.
     ///     Returns true if this call made the connection.
     /// </summary>
     internal async Task<bool> JoinAsync(RequestOrigin origin)
@@ -42,9 +42,8 @@ internal sealed class DiscordVoiceSession(AudioService audio, BotMetrics metrics
             if (_voice is not null) return false;
 
             var guild = origin.Guild ?? throw new VoiceJoinException("This command can only be used in a server.");
-            var voiceState = guild.VoiceStates.GetValueOrDefault(origin.UserId);
-            if (voiceState is not { ChannelId: { } channelId })
-                throw new VoiceJoinException("Join a voice channel first, then try again.");
+            var channelId = origin.VoiceChannelId ?? guild.VoiceStates.GetValueOrDefault(origin.UserId)?.ChannelId
+                            ?? throw new VoiceJoinException("Join a voice channel first, then try again.");
 
             _client = origin.Client;
             _guildId = guild.Id;

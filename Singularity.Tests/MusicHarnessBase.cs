@@ -1,7 +1,9 @@
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using NetCord;
 using NetCord.Gateway;
 using NetCord.Gateway.JsonModels;
@@ -54,7 +56,8 @@ public abstract class MusicHarnessBase : IAsyncLifetime
 
     private sealed class StubSource : ITrackSource
     {
-        public Task<IReadOnlyList<MusicTrackNew>> ResolveSongsAsync(string query) => Task.FromResult<IReadOnlyList<MusicTrackNew>>([]);
+        public Task<IReadOnlyList<MusicTrackNew>> ResolveSongsAsync(string query) =>
+            Task.FromResult<IReadOnlyList<MusicTrackNew>>(query.StartsWith("nothing") ? [] : [Tracks.Make(query)]);
 
         public Task<IReadOnlyList<MusicTrackNew>> SearchAsync(string query, int limit) =>
             Task.FromResult<IReadOnlyList<MusicTrackNew>>([Tracks.Make("hit0"), Tracks.Make("hit1")]);
@@ -91,7 +94,7 @@ public abstract class MusicHarnessBase : IAsyncLifetime
     protected readonly List<InteractionCallbackProperties> Responses = [];
     protected readonly List<RestCall> RestCalls = [];
     private readonly RestClient _rest;
-    private readonly GatewayClient _client = new(new NetCord.BotToken(BotToken), new GatewayClientConfiguration());
+    private readonly GatewayClient _client;
     private readonly ComponentInteractionService<ButtonInteractionContext> _buttons = new();
     private readonly ComponentInteractionService<StringMenuInteractionContext> _menus = new();
     private readonly ApplicationCommandService<ApplicationCommandContext> _commands = new();
@@ -99,19 +102,23 @@ public abstract class MusicHarnessBase : IAsyncLifetime
 
     protected GuildAudioInstanceOrchestrator Orchestrator { get; private set; } = null!;
     protected MusicSearch Search { get; private set; } = null!;
+    protected MusicScheduler Scheduler { get; private set; } = null!;
     protected Guild Guild { get; private set; } = null!;
+    protected FakeTimeProvider Time { get; } = new(new DateTimeOffset(2026, 1, 15, 12, 0, 0, TimeSpan.Zero));
 
     protected MusicHarnessBase()
     {
-        _rest = new RestClient(new RestClientConfiguration { RequestHandler = new RecordingRestHandler(RestCalls) });
+        var recording = new RestClientConfiguration { RequestHandler = new RecordingRestHandler(RestCalls) };
+        _rest = new RestClient(recording);
+        _client = new GatewayClient(new NetCord.BotToken(BotToken), new GatewayClientConfiguration { RestClientConfiguration = recording });
     }
 
     public Task InitializeAsync()
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton(TimeProvider.System);
-        services.AddSingleton(new MusicOptions { IdleTimeout = TimeSpan.Zero, AloneCheckInterval = TimeSpan.Zero, QueuePageSize = 10 });
+        services.AddSingleton<TimeProvider>(Time);
+        services.AddSingleton(new MusicOptions { IdleTimeout = TimeSpan.Zero, AloneCheckInterval = TimeSpan.Zero, QueuePageSize = 10, TimeZone = "UTC" });
         services.AddSingleton(new BotMetrics());
         services.AddSingleton<ErrorReporter>();
         services.AddSingleton<CommandCooldown>();
@@ -122,9 +129,11 @@ public abstract class MusicHarnessBase : IAsyncLifetime
 
         Orchestrator = _services.GetRequiredService<GuildAudioInstanceOrchestrator>();
         Search = _services.GetRequiredService<MusicSearch>();
+        Scheduler = _services.GetRequiredService<MusicScheduler>();
         _buttons.AddModule<MusicButtons>();
         _menus.AddModule<MusicMenus>();
         _commands.AddModule<MusicCommands>();
+        _commands.AddModule<ScheduleCommands>();
         Guild = BuildGuild(listeners: [UserId]);
         return Task.CompletedTask;
     }
@@ -139,9 +148,10 @@ public abstract class MusicHarnessBase : IAsyncLifetime
     // ---------------------------------------------------------------- building blocks
 
     // Listeners are in the voice channel with the bot. The bot can connect and speak there, as /play checks.
-    protected Guild BuildGuild(ulong[] listeners, bool botConnected = true)
+    protected Guild BuildGuild(ulong[] listeners, bool botConnected = true, ulong botChannelId = VoiceChannelId)
     {
-        JsonVoiceState InVoice(ulong userId) => new() { GuildId = GuildId, ChannelId = VoiceChannelId, UserId = userId };
+        JsonVoiceState InVoice(ulong userId) =>
+            new() { GuildId = GuildId, ChannelId = userId == BotId ? botChannelId : VoiceChannelId, UserId = userId };
 
         return new Guild(
             new JsonGuild
@@ -222,17 +232,52 @@ public abstract class MusicHarnessBase : IAsyncLifetime
         (string Name, ApplicationCommandOptionType Type, string Value)[]? options = null,
         ulong userId = UserId,
         Permissions permissions = default,
+        Guild? guild = null) =>
+        await RunCommandAsync(name, Options(options), userId, permissions, guild);
+
+    /// <summary>Runs a subcommand, such as /schedule play. Options are (name, type, value).</summary>
+    protected async Task<IExecutionResult> RunSubcommandAsync(
+        string name,
+        string subcommand,
+        (string Name, ApplicationCommandOptionType Type, string Value)[]? options = null,
+        ulong userId = UserId,
+        Permissions permissions = default,
         Guild? guild = null)
     {
-        var data = new JsonInteractionData
+        var sub = new JsonApplicationCommandInteractionDataOption
         {
-            Id = 1,
-            Name = name,
-            Type = ApplicationCommandType.ChatInput,
-            Options = (options ?? []).Select(o => new JsonApplicationCommandInteractionDataOption { Name = o.Name, Type = o.Type, Value = o.Value }).ToArray()
+            Name = subcommand,
+            Type = ApplicationCommandOptionType.SubCommand,
+            Options = Options(options)
         };
+        return await RunCommandAsync(name, [sub], userId, permissions, guild);
+    }
+
+    private async Task<IExecutionResult> RunCommandAsync(
+        string name, JsonApplicationCommandInteractionDataOption[] options, ulong userId, Permissions permissions, Guild? guild)
+    {
+        var data = new JsonInteractionData { Id = 1, Name = name, Type = ApplicationCommandType.ChatInput, Options = options };
         var interaction = new SlashCommandInteraction(Json(InteractionType.ApplicationCommand, data, userId, permissions), guild ?? Guild, Capture, _rest);
         return await _commands.ExecuteAsync(new ApplicationCommandContext(interaction, _client), _services);
+    }
+
+    private static JsonApplicationCommandInteractionDataOption[] Options((string Name, ApplicationCommandOptionType Type, string Value)[]? options) =>
+        (options ?? []).Select(o => new JsonApplicationCommandInteractionDataOption { Name = o.Name, Type = o.Type, Value = o.Value }).ToArray();
+
+    /// <summary>Makes the guild what the gateway reports, as background work such as a scheduled play reads it.</summary>
+    protected void CacheGuild(Guild guild)
+    {
+        // GatewayClient.Cache has no public setter.
+        var cache = typeof(GatewayClient).GetField("<Cache>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        cache.SetValue(_client, _client.Cache.CacheGuild(guild));
+    }
+
+    /// <summary>Messages the bot posted in the text channel by itself, as JSON.</summary>
+    protected List<JsonNode> ChannelMessages()
+    {
+        lock (RestCalls)
+            return RestCalls.Where(c => c.Method == "POST" && c.Path.EndsWith($"/channels/{TextChannelId}/messages"))
+                .Select(c => JsonNode.Parse(c.Body)!).ToList();
     }
 
     // A running session with a track playing and the rest of the titles waiting in the queue.
