@@ -18,7 +18,7 @@ public class MusicCommands(
     CommandCooldown cooldown,
     MusicOptions options,
     BotMetrics metrics,
-    ErrorReporter errors) : ApplicationCommandModule<ApplicationCommandContext>
+    ErrorReporter errors) : MusicCommandModule(logger, cooldown, options, metrics, errors)
 {
     [SlashCommand("play", "Play a song by URL, or by a search query.")]
     [RequireBotConnectPermission]
@@ -45,7 +45,7 @@ public class MusicCommands(
             await CloseUnjoinedSessionAsync(manager);
 
             // Expected problems (nothing found, join failed, queue full...) show their own message; bugs show a generic one.
-            await TryModifyResponseAsync(MusicViews.Notice(errors.Report(e, "play"), failure: true), "play");
+            await TryModifyResponseAsync(MusicViews.Notice(Errors.Report(e, "play"), failure: true), "play");
         }
     }
 
@@ -68,7 +68,7 @@ public class MusicCommands(
         }
         catch (Exception e)
         {
-            await TryModifyResponseAsync(MusicViews.Notice(errors.Report(e, "search"), failure: true), "search");
+            await TryModifyResponseAsync(MusicViews.Notice(Errors.Report(e, "search"), failure: true), "search");
         }
     }
 
@@ -176,51 +176,19 @@ public class MusicCommands(
     {
         using var scope = Begin("queue");
 
-        var view = MusicViews.Queue(GetManager().Player.Snapshot, page, options.QueuePageSize);
+        var view = MusicViews.Queue(GetManager().Player.Snapshot, page, Options.QueuePageSize);
         await RespondAsync(InteractionCallback.Message(view.ToMessage()));
     }
 
     #region Helpers
 
-    // Counts the command (by name only) and tags this call's logs with guild/user context (console only).
-    private IDisposable? Begin(string command)
-    {
-        metrics.Command(command);
-        return logger.BeginScope("guild={GuildId} user={UserId}", Context.Guild?.Id, Context.User.Id);
-    }
-
     private GuildAudioInstance GetManager() => orchestrator.GetOrCreateManager(Context.Guild!.Id);
-
-    private async Task<bool> RefuseIfOnCooldownAsync(string command)
-    {
-        if (cooldown.TryAcquire(command, Context.User.Id, options.PlayCooldown, out var remaining)) return false;
-
-        metrics.CooldownHit();
-        await RespondWithAsync(ControlResult.Refuse($"Slow down! Try again in {Math.Ceiling(remaining.TotalSeconds)}s."));
-        return true;
-    }
 
     // A session that never managed to join voice would otherwise linger as an empty shell.
     private async Task CloseUnjoinedSessionAsync(GuildAudioInstance? manager)
     {
         if (manager is { Voice.IsJoined: false } && Context.Guild is { } guild)
             await orchestrator.CloseManagerAsync(guild.Id);
-    }
-
-    // Refusals are only shown to the person who asked.
-    private Task RespondWithAsync(ControlResult result) =>
-        RespondAsync(InteractionCallback.Message(MusicViews.Notice(result.Message, failure: !result.Done).ToMessage(ephemeral: !result.Done)));
-
-    private async Task TryModifyResponseAsync(MessageView view, string command)
-    {
-        try
-        {
-            await ModifyResponseAsync(view.ApplyTo);
-        }
-        catch (Exception e)
-        {
-            errors.Record(e, $"{command}.respond", $"Could not deliver the /{command} result to Discord.");
-        }
     }
 
     #endregion
