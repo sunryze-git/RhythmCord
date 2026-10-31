@@ -93,6 +93,8 @@ All optional; defaults are in `MusicOptions` / `BooruOptions`.
 | `Music:PlayCooldown` | `00:00:02` | Per-user cooldown on `/play` and `/search`. |
 | `Music:SearchResults` | `5` | Matches offered by `/search` (at most 25). |
 | `Music:SearchLifetime` | `00:05:00` | How long a `/search` menu keeps working. |
+| `Music:MaxScheduledPlays` | `10` | Plays waiting in `/schedule` per server. |
+| `Music:TimeZone` | _(system)_ | IANA time zone for clock times given to `/schedule`, e.g. `Europe/Berlin`. |
 | `Music:StreamInfoLifetime` | `00:20:00` | How long a pre-fetched YouTube stream is trusted. |
 | `Music:ResolverOrder` | `["youtube","ytdlp"]` | Which lookup is tried first. yt-dlp is slower but survives YouTube changes. |
 | `Booru:Cooldown` | `00:00:03` | Per-user cooldown on `/e621`. |
@@ -154,6 +156,11 @@ JSON is available at `/api/stats` and a health check at `/healthz`.
 | `/loop [mode]` | Repeat nothing (`Off`), the current song (`Track`) or the whole queue (`Queue`). Without a mode it moves to the next one. |
 | `/shuffle` | Randomize the order of the current queue. |
 | `/leave` | Disconnect the bot from the voice channel (Move Members, or alone with the bot). |
+| `/schedule play <time> <query>` | Play a track in your voice channel later, within 24 hours. `time` is a delay (`30m`, `1h30m`) or a clock time (`21:00`, `9pm`). At that time the bot joins the channel if anyone is in it, and quietly drops the play if nobody is. Supports `next`. |
+| `/schedule list` | Show the plays waiting in this server. |
+| `/schedule cancel <id>` | Cancel a scheduled play (the person who scheduled it, or Move Members). |
+
+Scheduled plays are kept in memory: restarting the bot forgets them.
 
 Replies are Components V2 messages. `/status` carries Skip, Loop, Shuffle, Stop, Queue and Refresh buttons that follow the same rules as the commands; they only work for people in the bot's voice channel.
 
